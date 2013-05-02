@@ -139,8 +139,8 @@ event_result event_add_io_event(event_loop* loop, int fd, int mask,
     event->mask |= mask;
     event->data = data;
      
-    if (event->mask & EVENT_READABLE) event->read_callback = callback;
-    if (event->mask & EVENT_WRITEABLE) event->write_callback = callback;
+    if (mask & EVENT_READABLE) event->read_callback = callback;
+    if (mask & EVENT_WRITEABLE) event->write_callback = callback;
 
     if (loop->max_fd < fd) loop->max_fd = fd;
 

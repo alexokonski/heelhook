@@ -101,7 +101,7 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
     {
         event_stop_loop(loop); 
     }
-
+    /*printf("WROTE: %s\n", msg);*/
     event_delete_io_event(loop, fd, EVENT_WRITEABLE);
 }
 
@@ -130,6 +130,7 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
 
     g_messages_received++;
 
+    /*printf("READ: %s, ADDING IO EVENT %d\n", buffer, fd);*/
     event_result r = event_add_io_event(
         loop,
         fd,
@@ -248,18 +249,20 @@ int main(int argc, char** argv)
     for (int i = 0; i < NUM_TEST_MESSAGES; i++) 
     {
         const char* msg = g_test_messages[i];
+        /*printf("SENDING: %s\n", msg);*/
         n = write(s, msg, strsize(msg));
         if (n == -1)
         {
             error_exit(NULL);
         }
-
+        
         n = read(s, buffer, sizeof(buffer));
         if (n == -1)
         {
             error_exit(NULL);
         }
 
+        /*printf("GOT REPLY: %s\n", buffer);*/
         if (strncmp(g_test_replies[i], buffer, 
                     strsize(g_test_replies[i])) != 0)
         {
