@@ -31,7 +31,7 @@
 
 #include <sys/epoll.h>
 
-typedef struct platform_state
+typedef struct
 {
     int epollfd;
     struct epoll_event* epoll_events;

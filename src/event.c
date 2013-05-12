@@ -36,7 +36,7 @@
 #include "platform.h"
 #include "hhmemory.h"
 
-typedef struct event_io
+typedef struct 
 {
     int fd;
     int mask;
@@ -45,7 +45,7 @@ typedef struct event_io
     event_io_callback* write_callback;
 } event_io;
 
-typedef struct event_fired
+typedef struct 
 {
     int fd;
     int mask;
@@ -61,7 +61,7 @@ struct event_loop
     int stop;
 };
 
-typedef enum event_platform_result
+typedef enum
 {
     PLATFORM_RESULT_SUCCESS,
     PLATFORM_RESULT_OUT_OF_MEMORY,

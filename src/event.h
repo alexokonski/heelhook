@@ -38,7 +38,7 @@
 
 #define EVENT_DONT_BLOCK 1
 
-typedef enum event_result
+typedef enum
 {
     EVENT_RESULT_SUCCESS,
     EVENT_RESULT_EVENT_LOOP_FULL,
@@ -46,7 +46,6 @@ typedef enum event_result
     EVENT_RESULT_PLATFORM_ERROR,
 } event_result;
 
-struct event_loop;
 typedef struct event_loop event_loop;
 
 typedef void (event_io_callback)(struct event_loop* loop, int fd, void* data);

@@ -29,7 +29,6 @@
  */
 
 #include "../event.h"
-#include "../hhmemory.h"
 
 #include <sys/types.h>
 #include <errno.h>
