@@ -1,9 +1,14 @@
+darray.o: darray.c darray.h hhassert.h hhmemory.h util.h
 event.o: event.c event.h platform.h hhmemory.h event_epoll.c
 event_epoll.o: event_epoll.c
 event_poll.o: event_poll.c
+hhassert.o: hhassert.c
 hhmemory.o: hhmemory.c
 event_poll.o: event_poll.c
-test_event.o: test/test_event.c test/../event.h test/../hhmemory.h
+test_event.o: test/test_event.c test/../event.h
+test_darray.o: test/test_darray.c test/../darray.h test/../util.h
 event_epoll.o: event_epoll.c
-event.o: event.c event.h platform.h hhmemory.h event_epoll.c
+darray.o: darray.c darray.h hhassert.h hhmemory.h util.h
 hhmemory.o: hhmemory.c
+hhassert.o: hhassert.c
+event.o: event.c event.h platform.h hhmemory.h event_epoll.c
