@@ -2,7 +2,7 @@ STD= -std=c99 -pedantic
 WARN= -Wall -Wunused-parameter
 OPT?= -O2
 DEBUG= -g -ggdb
-SYMBOL= -D_BSD_SOURCE -DDEBUG
+SYMBOL= -D_BSD_SOURCE
 VPATH= test
 
 FINAL_CFLAGS = $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(CFLAGS)
@@ -12,6 +12,15 @@ HEELHOOK_OBJECTS = hhmemory.o event.o hhassert.o darray.o
 
 .PHONY: all
 all: heelhook 
+
+.PHONY: debug
+debug: 
+	$(MAKE) OPT=-O0 SYMBOL="-D_BSD_SOURCE -DDEBUG"
+
+.PHONY:test_debug
+test_debug:
+	$(MAKE) test OPT=-O0 SYMBOL="-D_BSD_SOURCE -DDEBUG"
+
 
 heelhook: $(HEELHOOK_OBJECTS)
 	@echo "nothing yet!"
