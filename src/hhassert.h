@@ -30,11 +30,15 @@
 
 #if defined(DEBUG)
 
-void hh_do_assert(int expression);
-#define hhassert(s) hh_do_assert((s));
+#include <assert.h>
+
+/* just a normal assert for now, TODO: add stack trace */
+#define hhassert(s) assert((s));
+#define hhassert_pointer(p) hhassert(p != NULL)
 
 #else
 
 #define hhassert(s)
+#define hhassert_pointer(p)
 
 #endif

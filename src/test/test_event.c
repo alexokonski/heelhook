@@ -29,6 +29,7 @@
  */
 
 #include "../event.h"
+#include "../util.h"
 
 #include <sys/types.h>
 #include <errno.h>
@@ -41,8 +42,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#define UNUSED(V) ((void) V)
 
 const char* g_test_messages[] = 
 {
@@ -84,7 +83,7 @@ static int strsize(const char* string)
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data)
 {
-    UNUSED(data);
+    hhunused(data);
 
     const char* msg = g_test_replies[g_messages_sent];
 
@@ -106,7 +105,7 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
 
 static void read_from_client_callback(event_loop* loop, int fd, void* data)
 {
-    UNUSED(data);
+    hhunused(data);
 
     char buffer[1024];
     int num_read = read(fd, buffer, sizeof(buffer));
@@ -146,7 +145,7 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
 
 static void accept_callback(event_loop* loop, int fd, void* data)
 {
-    UNUSED(data);
+    hhunused(data);
 
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -170,7 +169,7 @@ static void accept_callback(event_loop* loop, int fd, void* data)
 
 static void* event_thread(void* in)
 {
-    UNUSED(in);
+    hhunused(in);
 
     event_loop* loop = event_create_loop(1024);
     if (loop == NULL) error_exit("NULL WHEN CREATING EVENT LOOP");
@@ -218,8 +217,8 @@ static void* event_thread(void* in)
 
 int main(int argc, char** argv)
 {
-    UNUSED(argc);
-    UNUSED(argv);
+    hhunused(argc);
+    hhunused(argv);
 
     pthread_t thread;
 

@@ -33,10 +33,19 @@
 #include "hhassert.h"
 #include <assert.h>
 
-void hh_do_assert(int expression)
+inline void hh_do_assert(int expression)
 {
     /* just regular assert for now */
     assert(expression);
+}
+
+#else
+
+#include "util.h"
+
+inline void hh_do_assert(int expression)
+{
+    hhunused(expression);
 }
 
 #endif

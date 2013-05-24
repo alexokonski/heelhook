@@ -66,24 +66,25 @@ int darray_get_len(darray* array);
 /* get the number of additional elements available*/
 int darray_get_size_reserved(darray* array);
 
+/* clear out the darray - set the len to 0 */
+void darray_clear(darray* array);
+
 /* 
- * ensure the darray has room for this many additional elements
- * returns a new address for the darray, assign the 'array' paramter to it:
+ * ensure the darray has room for this many additional elements. usage:
  *
- * my_array = darray_ensure(my_array, 10);
+ * darray_ensure(&my_array, 10);
  */ 
-darray* darray_ensure(darray* array, int num_elems); 
+void darray_ensure(darray** array, int num_elems); 
 
 /* add to the length of the darray - just arithmetic, doesn't move memory */
 void darray_add_len(darray* array, int num_elems);
 
 /* 
- * append some elements to the array, expanding if needed 
- * returns a new address for the darray, assign the 'array' paramter to it:
+ * append some elements to the array, expanding if needed. usage: 
  *
- * my_array = darray_append(my_array, my_data, 10);
+ * darray_append(&my_array, my_data, 10);
  */ 
-darray* darray_append(darray* array, void* data, int num_elems);
+void darray_append(darray** array, void* data, int num_elems);
 
 #endif /* __DARRAY_H_ */
 

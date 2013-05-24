@@ -34,3 +34,4 @@
 
 /* countof static array */
 #define hhcountof(a) (sizeof(a)/sizeof(*(a)))
+#define hhunused(s) ((void)s)

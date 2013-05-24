@@ -82,7 +82,7 @@ darray* darray_create_data(
     darray* array = darray_create(elem_size, init_size_reserved);
     if (array == NULL) return NULL;
 
-    array = darray_append(array, data, num_elements);
+    darray_append(&array, data, num_elements);
     return array;
 }
 
@@ -111,33 +111,37 @@ int darray_get_size_reserved(darray* array)
     return array->size_reserved;
 }
 
+/* clear out the darray - set the len to 0 */
+void darray_clear(darray* array)
+{
+    array->len = 0;
+}
+
 /* 
- * ensure the darray has room for this many additional elements
- * returns a new address for the darray, assign the 'array' paramter to it:
+ * ensure the darray has room for this many additional elements. usage:
  *
- * my_array = darray_ensure(my_array, 10);
+ * darray_ensure(&my_array, 10);
  */ 
 
-darray* darray_ensure(darray* array, int num_elems)
+void darray_ensure(darray** array, int num_elems)
 {
-    int reserved = array->size_reserved;
-    int len = array->len;
-    darray* new_array = array;
+    darray* arr = *array;
+    int reserved = arr->size_reserved;
+    int len = arr->len;
 
     if ((reserved - len) < num_elems)
     {
         int num_extra = (len + num_elems) - reserved;
         int num_new_elems = hhmax(num_extra, reserved * 2);
         int new_size = 
-            (array->elem_size * (reserved + num_new_elems)) + sizeof(darray);
+            (arr->elem_size * (reserved + num_new_elems)) + sizeof(darray);
 
-        new_array = hhrealloc(array, new_size); 
-        if (new_array == NULL) return NULL;
+        arr = hhrealloc(arr, new_size);
+        (*array) = arr;
+        if (arr == NULL) return;
 
-        new_array->size_reserved += num_elems;
+        arr->size_reserved += num_elems;
     }
-
-    return new_array;
 }
 
 /* add to the length of the darray - just arithmetic, doesn't move memory */
@@ -153,19 +157,18 @@ void darray_add_len(darray* array, int num_elems)
  *
  * my_array = darray_append(my_array, my_data, 10);
  */ 
-darray* darray_append(darray* array, void* data, int num_elems)
+void darray_append(darray** array, void* data, int num_elems)
 {
-    darray* new_array;
-    if((new_array = darray_ensure(array, num_elems)) == NULL)
+    darray_ensure(array, num_elems);
+    darray* arr = *array;
+    if(arr == NULL)
     {
-        return NULL;
+        return;
     }
 
-    void* dest = new_array->data + (new_array->len * new_array->elem_size);
-    size_t data_size = num_elems * new_array->elem_size;
+    void* dest = arr->data + (arr->len * arr->elem_size);
+    size_t data_size = num_elems * arr->elem_size;
     memcpy(dest, data, data_size);
-    new_array->len += num_elems;
-
-    return array;
+    arr->len += num_elems;
 }
 
