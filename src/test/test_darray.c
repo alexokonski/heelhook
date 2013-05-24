@@ -114,7 +114,7 @@ int main(void)
     int arr_both[] = {5, 4, 3, 33, 15, 255, 1023, 2047, 4095};
     int arr_both_size = hhcountof(arr_both);
 
-    array = darray_append(array, arr, arr_size);
+    darray_append(&array, arr, arr_size);
     test_data(
         array, 
         arr, 
@@ -132,7 +132,7 @@ int main(void)
 
     /* append when it resizes array */
     cur_test = "append_resize";
-    array = darray_append(array, arr2, arr_size2);
+    darray_append(&array, arr2, arr_size2);
     test_data(array, arr_both, arr_both_size * sizeof(int), END_ARGS);
     test_len(array, arr_both_size, END_ARGS);
     test_size_reserved(array, 9, END_ARGS);
