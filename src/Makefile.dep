@@ -11,5 +11,4 @@ hhmemory.o: hhmemory.c
 network.o: network.c hhassert.h hhmemory.h network.h darray.h sha1/sha1.h \
  base64/cencode.h
 sha1.o: sha1/sha1.c sha1/sha1.h
-hhassert.o: hhassert.c util.h
 event.o: event.c event.h platform.h hhmemory.h event_epoll.c

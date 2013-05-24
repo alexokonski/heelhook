@@ -8,8 +8,7 @@ VPATH= test sha1 base64
 FINAL_CFLAGS = $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(CFLAGS)
 FINAL_LDFLAGS = $(LDFLAGS) -g -ggdb
 TEST_LIBS = -pthread
-HEELHOOK_OBJECTS = hhmemory.o event.o hhassert.o darray.o network.o sha1.o cencode.o 
-#HEELHOOK_OBJECTS = sha1.o
+HEELHOOK_OBJECTS = hhmemory.o event.o darray.o network.o sha1.o cencode.o 
 
 .PHONY: all
 all: heelhook 
@@ -24,7 +23,7 @@ test_debug:
 
 
 heelhook: $(HEELHOOK_OBJECTS)
-	@echo "nothing yet! $^"
+	@echo "nothing yet!"
 
 .PHONY: test
 test: test_event test_darray test_network
@@ -39,9 +38,6 @@ test_darray: test_darray.o $(HEELHOOK_OBJECTS)
 
 test_network: test_network.o $(HEELHOOK_OBJECTS)
 	$(CC) $(TEST_LIBS) -o $@ $^
-
-#sha1.o: sha1/sha1.c sha1/sha1.h
-#	$(CC) $(FINAL_CFLAGS) -c $<
 
 include Makefile.dep
 
