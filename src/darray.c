@@ -122,7 +122,6 @@ void darray_clear(darray* array)
  *
  * darray_ensure(&my_array, 10);
  */ 
-
 void darray_ensure(darray** array, int num_elems)
 {
     darray* arr = *array;
@@ -152,10 +151,9 @@ void darray_add_len(darray* array, int num_elems)
 }
 
 /* 
- * append some elements to the array, expanding if needed 
- * returns a new address for the darray, assign the 'array' paramter to it:
+ * append some elements to the array, expanding if needed. usage: 
  *
- * my_array = darray_append(my_array, my_data, 10);
+ * darray_append(&my_array, my_data, 10);
  */ 
 void darray_append(darray** array, void* data, int num_elems)
 {
@@ -170,5 +168,14 @@ void darray_append(darray** array, void* data, int num_elems)
     size_t data_size = num_elems * arr->elem_size;
     memcpy(dest, data, data_size);
     arr->len += num_elems;
+}
+
+/* return the last element of the darray */
+void* darray_get_last(darray* array)
+{
+    hhassert(array->len > 0);
+    if (array->len <= 0) return NULL;
+
+    return (array->data + (array->elem_size * (array->len - 1)));
 }
 

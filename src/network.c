@@ -28,11 +28,12 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "base64/cencode.h"
 #include "hhassert.h"
 #include "hhmemory.h"
 #include "network.h"
 #include "sha1/sha1.h"
-#include "base64/cencode.h"
+#include "util.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -61,6 +62,31 @@ typedef enum
     NETWORK_OPCODE_RESERVE14,    /* 0x0E */
     NETWORK_OPCODE_RESERVE15     /* 0x0F */
 } network_opcode;
+
+static int is_comma_delimited_header(const char* header)
+{
+    static const char* comma_headers[] = 
+    {
+        "Sec-WebSocket-Protocol",
+        "Sec-WebSocket-Extensions"
+    };
+
+    for (int i = 0; i < hhcountof(comma_headers); i++)
+    {
+        if (strcmp(header, comma_headers[i]) == 0)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static char* eat_non_whitespace_or_comma(char* buf)
+{
+    while (*buf != '\0' && !isspace(*buf) && *buf != ',') buf++;
+    return buf;
+}
 
 static char* eat_whitespace(char* buf)
 {
@@ -114,6 +140,14 @@ static char* parse_request_line(
     return buf;
 }
 
+static void add_comma_delimited_token(network_header* header, char* value)
+{
+    value = eat_whitespace(value);
+    char* value_end = eat_non_whitespace_or_comma(value);
+    (*value_end) = '\0';
+    darray_append(&header->values, &value, 1);
+}
+
 static void add_header(network_handshake* info, char* name, char* value)
 {
     network_header* header = NULL;
@@ -130,20 +164,37 @@ static void add_header(network_handshake* info, char* name, char* value)
         }
     }
 
-    if (header != NULL)
-    {
-        /* this header appears multiple times and has multiple values */
-        darray_append(&header->values, &value, 1); 
-    }
-    else
+    if (header == NULL )
     {
         /* first time this header has appeared, create a new header object */
         network_header new_header;
         new_header.name = name;
-        new_header.values = darray_create_data(&value, sizeof(char*), 1, 1); 
+        new_header.values = darray_create(sizeof(char*), 1); 
 
         /* now add it to our list of headers */
         darray_append(&info->headers, &new_header, 1);
+
+        /* retrieve it */
+        header = darray_get_last(info->headers);        
+    }
+
+    if (is_comma_delimited_header(name))
+    {
+        /* separate each comma-delimited value */
+        char* value_comma = strchr(value, ',');
+        while (value_comma != NULL && *value != '\0')
+        {
+            add_comma_delimited_token(header, value);
+            value = value_comma + 1;
+            value_comma = strchr(value, ',');
+        }
+
+        /* add last value */
+        add_comma_delimited_token(header, value);
+    }
+    else
+    {
+        darray_append(&header->values, &value, 1); 
     }
 }
 
@@ -408,8 +459,8 @@ network_result network_write_handshake(
     );
 
     /* 
-     * snprintf doesn't include the null termintor, so we should have written
-     * exactly total_len - 1 bytes
+     * num_written doesn't include the null terminator, so we should have 
+     * written exactly total_len - 1 bytes
      */
     hhassert(num_written == (total_len - 1));
     darray_add_len(conn->write_buffer, total_len - 1);
@@ -475,7 +526,7 @@ network_result network_read_msg(network_conn* conn, int start_pos)
  * put the message in write_msg on conn->write_buffer.
  * msg will be broken up into frames of size out_frame_max
  */
-network_result network_write_msg(network_conn* conn, network_msg write_msg)
+network_result network_write_msg(network_conn* conn, network_msg* write_msg)
 {
 
 }

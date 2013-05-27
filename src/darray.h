@@ -86,5 +86,8 @@ void darray_add_len(darray* array, int num_elems);
  */ 
 void darray_append(darray** array, void* data, int num_elems);
 
+/* return the last element of the darray */
+void* darray_get_last(darray* array);
+
 #endif /* __DARRAY_H_ */
 

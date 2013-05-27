@@ -36,21 +36,24 @@
 
 static const char* TEST_REQUEST_LINE = "GET %s HTTP/1.1\r\n";
 static const char* RESOURCE_NAME = "/chat";
-static struct 
+static const struct 
 {
     const char* name;
-    const char* value;
-    int value_index;
+    const char* send_value;
+    const char* values[3];
+    int value_index_start;
 } g_headers[] = {
-    {"Host", "server.example.com", 0},
-    {"Upgrade", "websocket", 0},
-    {"Connection", "Upgrade", 0},
-    {"Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==", 0},
-    {"Origin", "http://example.com", 0},
-    {"Sec-WebSocket-Protocol", "chat, superchat", 0},
-    {"Sec-WebSocket-Version", "13", 0},
-    {"Sec-WebSocket-Protocol", "otherchat", 1},
-    {NULL, NULL, 0} /* Sentinel */
+    {"Host", "server.example.com", {"server.example.com", NULL}, 0},
+    {"Upgrade", "websocket", {"websocket", NULL}, 0},
+    {"Connection", "Upgrade", {"Upgrade", NULL}, 0},
+    {"Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==", 
+        {"dGhlIHNhbXBsZSBub25jZQ==", NULL}, 0},
+    {"Origin", "http://example.com", {"http://example.com", NULL}, 0},
+    {"Sec-WebSocket-Protocol", "chat, superchat", 
+        {"chat", "superchat", NULL}, 0},
+    {"Sec-WebSocket-Version", "13", {"13", NULL},  0},
+    {"Sec-WebSocket-Protocol", "otherchat", {"otherchat", NULL}, 2},
+    {NULL, NULL, {NULL}, 0} /* Sentinel */
 };
 const int NUM_UNIQUE_HEADERS = 7;
 static char TEST_BROKEN_REQUEST_LINE[] = "GET /thing HTTP/1.1";
@@ -84,7 +87,7 @@ int main(int argc, char** argv)
             len - num_written, 
             "%s: %s\r\n", 
             g_headers[i].name,
-            g_headers[i].value
+            g_headers[i].send_value
         );
     }
 
@@ -125,36 +128,40 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    for(int i = 0; g_headers[i].name != NULL; i++)
+    for (int i = 0; g_headers[i].name != NULL; i++)
     {
         const char* name = g_headers[i].name;
-        int index = g_headers[i].value_index;
-        if (index >= network_get_num_header_values(conn, name))
-        {
-            printf(
-                "VALUE INDEX OUT OF BOUNDS: %s, %d, %d\n", 
-                name, 
-                index,
-                network_get_num_header_values(conn, name)
-            );
-            exit(1);
-        }
 
-        const char* value = network_get_header_value(conn, name, index);
-        if (value == NULL)
+        for (int j = 0; g_headers[i].values[j] != NULL; j++)
         {
-            printf("NULL VALUE FOR NAME: %s\n", name);
-            exit(1);
-        }
+            int index = g_headers[i].value_index_start + j;
+            if (index >= network_get_num_header_values(conn, name))
+            {
+                printf(
+                    "VALUE INDEX OUT OF BOUNDS: %s, %d, %d\n", 
+                    name, 
+                    index,
+                    network_get_num_header_values(conn, name)
+                );
+                exit(1);
+            }
 
-        if (strcmp(g_headers[i].value, value) != 0)
-        {
-            printf(
-                "VALUE DOESN'T MATCH: %s, %s\n", 
-                g_headers[i].value, 
-                value
-            );
-            exit(1);
+            const char* value = network_get_header_value(conn, name, index);
+            if (value == NULL)
+            {
+                printf("NULL VALUE FOR NAME: %s\n", name);
+                exit(1);
+            }
+
+            if (strcmp(g_headers[i].values[j], value) != 0)
+            {
+                printf(
+                    "VALUE DOESN'T MATCH: %s, %s\n", 
+                    g_headers[i].values[j], 
+                    value
+                );
+                exit(1);
+            }
         }
     }
 

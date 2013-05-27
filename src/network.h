@@ -144,7 +144,7 @@ network_result network_read_msg(network_conn* conn, int start_pos);
  * put the message in write_msg on conn->write_buffer.
  * msg will be broken up into frames of size out_frame_max
  */
-network_result network_write_msg(network_conn* conn, network_msg write_msg);
+network_result network_write_msg(network_conn* conn, network_msg* write_msg);
 
 #endif /* __NETWORK_H_ */
 
