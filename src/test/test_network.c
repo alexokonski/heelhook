@@ -243,18 +243,23 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    if (msg.msg_len != 28)
+    static const char expected_msg[] = "Rock it with HTML5 WebSocket";
+    static const int expected_len = sizeof(expected_msg) - 1;
+    if (msg.msg_len != expected_len)
     {
-        printf("MESSAGE SHOULD BE LEN 28, GOT %" PRId64 "\n", msg.msg_len);
+        printf(
+            "MESSAGE SHOULD BE LEN %d, GOT %" PRId64 "\n", 
+            expected_len,
+            msg.msg_len
+        );
         exit(1);
     }
 
-    if (strncmp(msg.data, "Rock it with HTML5 WebSocket", msg.msg_len) != 0)
+    if (strncmp(msg.data, expected_msg, msg.msg_len) != 0)
     {
-        /* okay because we KNOW msg_len is 28 */
-        char stuff[29];
-        memcpy(stuff, msg.data, 28);
-        stuff[sizeof(stuff)-1] = '\0';
+        char stuff[expected_len+1];
+        memcpy(stuff, msg.data, expected_len);
+        stuff[expected_len] = '\0';
         printf("MESSAGE MISMATCH: %s\n", stuff);
         exit(1);
     }
@@ -295,17 +300,23 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    if (msg.msg_len != 18)
+    static const char expected_frag_msg[] = "fragment1fragment2";
+    static const int expected_frag_len = sizeof(expected_frag_msg) - 1;
+    if (msg.msg_len != expected_frag_len)
     {
-        printf("FRAG LEN MISMATCH: %" PRId64 "\n", msg.msg_len);
+        printf(
+            "FRAG LEN MISMATCH: %d %" PRId64 "\n", 
+            expected_frag_len, 
+            msg.msg_len
+        );
         exit(1);
     }
 
     if (strncmp(msg.data, "fragment1fragment2", msg.msg_len) != 0)
     {
-        char stuff[19];
-        memcpy(stuff, msg.data, 18);
-        stuff[sizeof(stuff)-1] = '\0';
+        char stuff[expected_frag_len+1];
+        memcpy(stuff, msg.data, expected_frag_len);
+        stuff[expected_frag_len] = '\0';
         printf("FRAG MSG MISMATCH: %s\n", stuff);
         exit(1);
     }

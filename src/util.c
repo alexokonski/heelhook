@@ -40,12 +40,6 @@ typedef enum
     UTIL_BIG_ENDIAN
 } util_endian;
 
-typedef union
-{
-    uint64_t i;
-    char bytes[sizeof(uint64_t)];
-} util_convert;
-
 static util_endian g_system_endian = UTIL_UNKNOWN;
 
 static void util_endian_test(void)
