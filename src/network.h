@@ -61,8 +61,8 @@ typedef enum
 /* represents a WebSocket message */
 typedef struct
 {
-    network_msg_type msg_type;
-    int msg_length;
+    network_msg_type type;
+    int64_t msg_len;
     char* data;
 } network_msg;
 
@@ -84,18 +84,19 @@ typedef struct
 /* represents a network connection */
 typedef struct
 {
-    size_t out_frame_max;   /* maximum payload size for outgoing frames */
+    int64_t out_frame_max;  /* maximum payload size for outgoing frames */
     network_state state;    /* current state of this connection */
     network_handshake info; /* info about this connection from handshake */
     darray* read_buffer;    /* char* buffer used for reading from a client */
     darray* write_buffer;   /* char* buffer used for writing to a client */
-    network_msg read_msg;   /* msg we're currently reading from a client */
+    network_msg frag_msg;   /* fragmented msg we're currently reading 
+                               from a client */
 } network_conn;
 
 /*
  * create a network_conn on the heap, init buffers to init_buf_len bytes 
  */
-network_conn* network_create_conn(size_t out_frame_max, size_t init_buf_len);
+network_conn* network_create_conn(int64_t out_frame_max, size_t init_buf_len);
 
 /* 
  * free/destroy a network_conn
@@ -136,9 +137,14 @@ const char* network_get_header_value(
 
 /*
  * process a frame from the read buffer starting at start_pos into 
- * conn->read_msg.
+ * conn->read_msg. read_msg will contain the read message if network_result
+ * is NETWORK_RESULT_SUCCESS.  Otherwise, it is untouched.
  */
-network_result network_read_msg(network_conn* conn, int start_pos);
+network_result network_read_msg(
+    network_conn* conn, 
+    size_t start_pos, 
+    network_msg* read_msg
+);
 
 /*
  * put the message in write_msg on conn->write_buffer.

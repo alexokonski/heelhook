@@ -33,6 +33,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 static const char* TEST_REQUEST_LINE = "GET %s HTTP/1.1\r\n";
 static const char* RESOURCE_NAME = "/chat";
@@ -63,6 +64,35 @@ static char TEST_RESPONSE[] =
 "Connection: Upgrade\r\n"
 "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
 "Sec-WebSocket-Protocol: chat\r\n\r\n";
+
+static const unsigned char TEST_CLIENT_FRAME[] = 
+{
+    0x81, 0x9c, 0xe7, 0x63, 0x33, 0x96, 0xb5, 0x0c, 0x50, 0xfd, 0xc7, 0x0a, 
+    0x47, 0xb6, 0x90, 0x0a, 0x47, 0xfe, 0xc7, 0x2b, 0x67, 0xdb, 0xab, 0x56, 
+    0x13, 0xc1, 0x82, 0x01, 0x60, 0xf9, 0x84, 0x08, 0x56, 0xe2
+};
+
+static const unsigned char TEST_CLIENT_FRAG_1[] =
+{
+    0x01, 0x89, 0x97, 0xa4, 0xcc, 0xb0, 0xf1, 0xd6, 0xad, 0xd7, 0xfa, 0xc1, 
+    0xa2, 0xc4, 0xa6    
+};
+
+static const unsigned char TEST_CLIENT_FRAG_2[] =
+{
+    0x80, 0x89, 0x49, 0x82, 0x34, 0xd8, 0x2f, 0xf0, 0x55, 0xbf, 0x24, 0xe7, 
+    0x5a, 0xac, 0x7b
+};
+
+static const unsigned char TEST_SERVER_FRAG_1[] =
+{
+    0x01, 0x03, 0x48, 0x65, 0x6c
+};
+
+static const unsigned char TEST_SERVER_FRAG_2[] =
+{
+    0x80, 0x02, 0x6c, 0x6f
+};
 
 int main(int argc, char** argv)
 {
@@ -121,7 +151,7 @@ int main(int argc, char** argv)
     if (NUM_UNIQUE_HEADERS != darray_get_len(info->headers))
     {
         printf(
-            "HEADER COUNTS DON'T MATCH: %d, %d\n",
+            "HEADER COUNTS DON'T MATCH: %lu, %d\n",
             darray_get_len(info->headers),
             NUM_UNIQUE_HEADERS
         );
@@ -176,7 +206,7 @@ int main(int argc, char** argv)
     if (strlen(TEST_RESPONSE) != darray_get_len(conn->write_buffer))
     {
         printf(
-            "LENGTH MISMATCH %lu %d\n%s\n%s\n", 
+            "LENGTH MISMATCH %lu %lu\n%s\n%s\n", 
             strlen(TEST_RESPONSE), 
             darray_get_len(conn->write_buffer),
             TEST_RESPONSE,
@@ -188,6 +218,196 @@ int main(int argc, char** argv)
     if (memcmp(TEST_RESPONSE, write_buf, strlen(TEST_RESPONSE)) != 0)
     {
         printf("RESPONSE MISMATCH %s %s\n", TEST_RESPONSE, write_buf);
+        exit(1);
+    }
+
+    /* test reading a message now that the handshake worked */
+    darray_append(
+        &conn->read_buffer, 
+        TEST_CLIENT_FRAME, 
+        sizeof(TEST_CLIENT_FRAME)
+    );
+
+    network_msg msg;
+    r = network_read_msg(conn, 0, &msg);
+
+    if (r != NETWORK_RESULT_SUCCESS)
+    {
+        printf("RESULT MISMATCH: %d\n", r);
+        exit(1);
+    }
+
+    if (msg.type != NETWORK_MSG_TEXT)
+    {
+        printf("MESSAGE SHOULD BE TEXT\n");
+        exit(1);
+    }
+
+    if (msg.msg_len != 28)
+    {
+        printf("MESSAGE SHOULD BE LEN 28, GOT %" PRId64 "\n", msg.msg_len);
+        exit(1);
+    }
+
+    if (strncmp(msg.data, "Rock it with HTML5 WebSocket", msg.msg_len) != 0)
+    {
+        /* okay because we KNOW msg_len is 28 */
+        char stuff[29];
+        memcpy(stuff, msg.data, 28);
+        stuff[sizeof(stuff)-1] = '\0';
+        printf("MESSAGE MISMATCH: %s\n", stuff);
+        exit(1);
+    }
+
+    darray_clear(conn->read_buffer);
+    darray_append(
+        &conn->read_buffer, 
+        TEST_CLIENT_FRAG_1, 
+        sizeof(TEST_CLIENT_FRAG_1)
+    );
+    memset(&msg, 0, sizeof(msg));
+    r = network_read_msg(conn, 0, &msg);
+
+    if (r != NETWORK_RESULT_CONTINUE)
+    {
+        printf("MESSAGE FRAGMENT RESULT MISMATCH: %d\n", r);
+        exit(1);
+    }
+
+    int start_pos = darray_get_len(conn->read_buffer);
+    darray_append(
+        &conn->read_buffer,
+        TEST_CLIENT_FRAG_2,
+        sizeof(TEST_CLIENT_FRAG_1)
+    );
+
+    r = network_read_msg(conn, start_pos, &msg);
+
+    if (r != NETWORK_RESULT_SUCCESS)
+    {
+        printf("NON-SUCCESS SECOND MSG FRAG: %d\n", r);
+        exit(1);
+    }
+
+    if (msg.type != NETWORK_MSG_TEXT)
+    {
+        printf("FRAG TYPE MISMATCH: %d\n", msg.type);
+        exit(1);
+    }
+
+    if (msg.msg_len != 18)
+    {
+        printf("FRAG LEN MISMATCH: %" PRId64 "\n", msg.msg_len);
+        exit(1);
+    }
+
+    if (strncmp(msg.data, "fragment1fragment2", msg.msg_len) != 0)
+    {
+        char stuff[19];
+        memcpy(stuff, msg.data, 18);
+        stuff[sizeof(stuff)-1] = '\0';
+        printf("FRAG MSG MISMATCH: %s\n", stuff);
+        exit(1);
+    }
+
+    darray_clear(conn->read_buffer);
+    
+    const unsigned char header[] = 
+    {
+        0x82, 0xff, /* fin bit, opcode, extended len */
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /* extended len */
+        0x37, 0xfa, 0x21, 0x3d /* masking key */
+    };
+    const int payload_len = 65536;
+    int total_len = sizeof(header) + payload_len;
+
+    darray_ensure(&conn->read_buffer, total_len);
+
+    const unsigned char* masking_key = &header[sizeof(header) - 4];
+    char* data = darray_get_data(conn->read_buffer);
+    memcpy(data, header, sizeof(header));
+    data += sizeof(header);
+
+    for (int i = 0; i < payload_len; i++)
+    {
+        *data = '*' ^ masking_key[i % 4];
+        data++;
+    }
+
+    darray_add_len(conn->read_buffer, total_len);
+
+    memset(&msg, 0, sizeof(msg));
+    r = network_read_msg(conn, 0, &msg);
+ 
+    if (r != NETWORK_RESULT_SUCCESS)
+    {
+        printf("NON-SUCCESS LONG MSG FRAG: %d\n", r);
+        exit(1);
+    }
+
+    if (msg.type != NETWORK_MSG_BINARY)
+    {
+        printf("LONG MSG TYPE MISMATCH: %d\n", msg.type);
+        exit(1);
+    }
+
+    if (msg.msg_len != 65536)
+    {
+        printf("LONG MSG LEN MISMATCH: %" PRId64 "\n", msg.msg_len);
+        exit(1);
+    }
+
+    if (msg.data[65535] != '*')
+    {
+        printf("LONG MSG INVALID LAST BYTE: %c\n", msg.data[65535]);
+        exit(1);
+    }
+
+    /*darray_clear(conn->write_buffer);*/
+    size_t before_len = darray_get_len(conn->write_buffer); 
+    static char out_message[] = "Hello";
+    conn->out_frame_max = 3;
+    msg.type = NETWORK_MSG_TEXT;
+    msg.data = out_message;
+    msg.msg_len = sizeof(out_message) - 1;
+    r = network_write_msg(conn, &msg);
+
+    if (r != NETWORK_RESULT_SUCCESS)
+    {
+        printf("WRITE MSG RESULT FAIL: %d\n", r);
+        exit(1);
+    }
+
+    size_t new_len = darray_get_len(conn->write_buffer) - before_len;
+    int total_msg_len = sizeof(TEST_SERVER_FRAG_1) + 
+                        sizeof(TEST_SERVER_FRAG_2);
+    if (new_len != total_msg_len )
+    {
+        printf(
+            "WRITE MSG LEN WRONG %d %lu\n", 
+            total_msg_len, 
+            darray_get_len(conn->write_buffer)
+        );
+        exit(1);
+    }
+
+    data = darray_get_data(conn->write_buffer);
+    data = &data[before_len];
+    if (memcmp(data, TEST_SERVER_FRAG_1, sizeof(TEST_SERVER_FRAG_1)) != 0)
+    {
+        printf("WRITE MSG MEMCMP FAIL FRAG 1\n");
+        exit(1);
+    }
+
+    if (
+        memcmp(
+            &data[sizeof(TEST_SERVER_FRAG_1)], 
+            TEST_SERVER_FRAG_2, 
+            sizeof(TEST_SERVER_FRAG_2)
+        ) != 0
+    )
+    {
+        printf("WRITE MSG MEMCMP FAIL FRAG 2\n");
         exit(1);
     }
 

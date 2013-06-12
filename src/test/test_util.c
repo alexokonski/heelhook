@@ -1,5 +1,5 @@
-/* util - helpful utilities 
- * 
+/* test_network - test utility module 
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *
@@ -28,21 +28,43 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdint.h>
+#include "../util.h"
 
-/* min/max */
-#define hhmin(x, y) (((x) <= (y)) ? (x) : (y)) 
-#define hhmax(x, y) (((x) >= (y)) ? (x) : (y))
+#include <stdio.h>
+#include <stdlib.h>
 
-/* countof static array */
-#define hhcountof(a) (sizeof(a)/sizeof(*(a)))
-#define hhunused(s) ((void)s)
+int main(int argc, char** argv)
+{
+    hhunused(argc);
+    hhunused(argv);
 
-/* host <--> network byte order funcs, including uint64_t */
-uint32_t hh_htonl(uint32_t hostlong);
-uint16_t hh_htons(uint16_t hostshort);
-uint32_t hh_ntohl(uint32_t netlong);
-uint16_t hh_ntohs(uint16_t netshort);
-uint64_t hh_htonll(uint64_t hostlonglong);
-uint64_t hh_ntohll(uint64_t netlonglong);
+    uint64_t longlong = hh_htonll((uint64_t)1);
+    int test = 1;
+    if (*((char*)&test) == 1)
+    {
 
+        if (longlong != (((uint64_t)1) << 56))
+        {
+            printf(
+                "BYTE ORDER FAIL LE: %lx, %lx\n", 
+                longlong, 
+                (((uint64_t)1) << 63)
+            );
+            exit(1);
+        }
+    }
+    else
+    {
+        if (longlong != 1)
+        {
+            printf(
+                "BYTE ORDER FAIL BE: %lu, %lu\n",
+                longlong,
+                (uint64_t)1
+            );
+            exit(1);
+        }
+    }
+    
+    exit(0);
+}

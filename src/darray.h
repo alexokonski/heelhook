@@ -61,7 +61,7 @@ void darray_destroy(darray* array);
 void* darray_get_data(darray* array);
 
 /* get the current length of the darray */
-int darray_get_len(darray* array); 
+size_t darray_get_len(darray* array); 
 
 /* get the number of additional elements available*/
 int darray_get_size_reserved(darray* array);
@@ -84,7 +84,7 @@ void darray_add_len(darray* array, int num_elems);
  *
  * darray_append(&my_array, my_data, 10);
  */ 
-void darray_append(darray** array, void* data, int num_elems);
+void darray_append(darray** array, const void* data, int num_elems);
 
 /* return the last element of the darray */
 void* darray_get_last(darray* array);

@@ -8,7 +8,7 @@ VPATH= test sha1 base64
 FINAL_CFLAGS = $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(CFLAGS)
 FINAL_LDFLAGS = $(LDFLAGS) -g -ggdb
 TEST_LIBS = -pthread
-HEELHOOK_OBJECTS = hhmemory.o event.o darray.o network.o sha1.o cencode.o 
+HEELHOOK_OBJECTS = hhmemory.o event.o darray.o network.o sha1.o cencode.o util.o
 
 .PHONY: all
 all: heelhook 
@@ -26,7 +26,7 @@ heelhook: $(HEELHOOK_OBJECTS)
 	@echo "nothing yet!"
 
 .PHONY: test
-test: test_event test_darray test_network
+test: test_event test_darray test_network test_util
 	@echo
 	@(bash runtests.sh $^)
 
@@ -37,6 +37,9 @@ test_darray: test_darray.o $(HEELHOOK_OBJECTS)
 	$(CC) $(TEST_LIBS) -o $@ $^
 
 test_network: test_network.o $(HEELHOOK_OBJECTS)
+	$(CC) $(TEST_LIBS) -o $@ $^
+
+test_util: test_util.o $(HEELHOOK_OBJECTS)
 	$(CC) $(TEST_LIBS) -o $@ $^
 
 include Makefile.dep
@@ -53,4 +56,5 @@ clean:
 	rm -f test_event
 	rm -f test_darray
 	rm -f test_network
+	rm -f test_util
 
