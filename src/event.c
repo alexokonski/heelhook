@@ -89,6 +89,7 @@ event_loop* event_create_loop(int loop_size)
 
     loop->num_events = loop_size;
     loop->max_fd = -1;
+    loop->stop = 0;
 
     if (event_platform_create(loop) != PLATFORM_RESULT_SUCCESS)
     {

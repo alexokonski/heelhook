@@ -85,7 +85,7 @@ static event_platform_result event_platform_add(event_loop* loop, int fd,
     int op = loop->io_events[fd].mask == EVENT_NONE ? 
             EPOLL_CTL_ADD : EPOLL_CTL_MOD;
 
-    epevent.events = 0;
+    memset(&epevent, 0, sizeof(epevent));
     if (mask & EVENT_READABLE) epevent.events |= EPOLLIN;
     if (mask & EVENT_WRITEABLE) epevent.events |= EPOLLOUT;
 
@@ -106,7 +106,7 @@ static event_platform_result event_platform_remove(event_loop* loop, int fd,
 
     int new_mask = loop->io_events[fd].mask & (~remove_mask);
 
-    epevent.events = 0;
+    memset(&epevent, 0, sizeof(epevent));
     if (new_mask & EVENT_READABLE) epevent.events |= EPOLLIN;
     if (new_mask & EVENT_WRITEABLE) epevent.events |= EPOLLOUT;
 
