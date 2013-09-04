@@ -1,14 +1,22 @@
 event_poll.o: event_poll.c
+error_code.o: error_code.c error_code.h util.h
 cencode.o: base64/cencode.c base64/cencode.h
 cdecode.o: base64/cdecode.c base64/cdecode.h
+util.o: util.c util.h
 test_event.o: test/test_event.c test/../event.h test/../util.h
+test_util.o: test/test_util.c test/../util.h
 test_darray.o: test/test_darray.c test/../darray.h test/../util.h
-test_network.o: test/test_network.c test/../network.h test/../darray.h \
- test/../util.h
+test_protocol.o: test/test_protocol.c test/../protocol.h test/../darray.h \
+ test/../util.h test/../util.h
 event_epoll.o: event_epoll.c
+echoserver.o: servers/echoserver.c servers/../server.h \
+ servers/../config.h servers/../protocol.h servers/../darray.h \
+ servers/../util.h
+protocol.o: protocol.c base64/cencode.h error_code.h util.h hhassert.h \
+ hhmemory.h protocol.h darray.h sha1/sha1.h
 darray.o: darray.c darray.h hhassert.h hhmemory.h util.h
 hhmemory.o: hhmemory.c
-network.o: network.c hhassert.h hhmemory.h network.h darray.h sha1/sha1.h \
- base64/cencode.h
 sha1.o: sha1/sha1.c sha1/sha1.h
+server.o: server.c error_code.h util.h event.h inlist.h hhassert.h \
+ hhmemory.h protocol.h darray.h server.h config.h
 event.o: event.c event.h platform.h hhmemory.h event_epoll.c

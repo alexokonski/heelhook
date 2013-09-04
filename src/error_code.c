@@ -1,5 +1,5 @@
-/* util - helpful utilities 
- * 
+/* error_code - closing error code constants from RFC 6455
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *
@@ -28,36 +28,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __UTIL_H_
-#define __UTIL_H_
+#include "error_code.h"
 
-#include <stdint.h>
+BOOL is_error_valid(int err_code)
+{
+    if (err_code < 1000 || 
+        (err_code >= 1004 && err_code <= 1006) ||
+        (err_code >= 1012 && err_code <= 1015) ||
+        (err_code >= 1016 && err_code <= 2999))
+    {
+        return FALSE;
+    }
 
-/* min/max */
-#define hhmin(x, y) (((x) <= (y)) ? (x) : (y)) 
-#define hhmax(x, y) (((x) >= (y)) ? (x) : (y))
-
-/* countof static array */
-#define hhcountof(a) (sizeof(a)/sizeof(*(a)))
-#define hhunused(s) ((void)s)
-
-/* host <--> network byte order funcs, including uint64_t */
-uint32_t hh_htonl(uint32_t hostlong);
-uint16_t hh_htons(uint16_t hostshort);
-uint32_t hh_ntohl(uint32_t netlong);
-uint16_t hh_ntohs(uint16_t netshort);
-uint64_t hh_htonll(uint64_t hostlonglong);
-uint64_t hh_ntohll(uint64_t netlonglong);
-
-typedef char BOOL;
-#define TRUE  1
-#define FALSE 0
-
-/* use this so we never inline in debug builds */
-#ifdef DEBUG
-    #define HH_INLINE
-#else
-    #define HH_INLINE inline
-#endif
-
-#endif /* __UTIL_H_ */
+    return TRUE;
+}

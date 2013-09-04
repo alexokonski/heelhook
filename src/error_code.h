@@ -1,5 +1,5 @@
-/* util - helpful utilities 
- * 
+/* error_code - closing error code constants from RFC 6455
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *
@@ -28,36 +28,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __UTIL_H_
-#define __UTIL_H_
+#include "util.h"
 
-#include <stdint.h>
+#define HH_ERROR_NORMAL                     1000
+#define HH_ERROR_GOING_AWAY                 1001
+#define HH_ERROR_PROTOCOL                   1002
+#define HH_ERROR_BAD_DATA_TYPE              1003
+#define HH_ERROR_BAD_DATA                   1007
+#define HH_ERROR_POLICY_VIOLATION           1008
+#define HH_ERROR_LARGE_MESSAGE              1009
+#define HH_ERROR_CLIENT_NEEDS_EXTENSION     1010
+#define HH_ERROR_UNEXPECTED_CONDITION       1011
 
-/* min/max */
-#define hhmin(x, y) (((x) <= (y)) ? (x) : (y)) 
-#define hhmax(x, y) (((x) >= (y)) ? (x) : (y))
+BOOL is_error_valid(int err_code);
 
-/* countof static array */
-#define hhcountof(a) (sizeof(a)/sizeof(*(a)))
-#define hhunused(s) ((void)s)
-
-/* host <--> network byte order funcs, including uint64_t */
-uint32_t hh_htonl(uint32_t hostlong);
-uint16_t hh_htons(uint16_t hostshort);
-uint32_t hh_ntohl(uint32_t netlong);
-uint16_t hh_ntohs(uint16_t netshort);
-uint64_t hh_htonll(uint64_t hostlonglong);
-uint64_t hh_ntohll(uint64_t netlonglong);
-
-typedef char BOOL;
-#define TRUE  1
-#define FALSE 0
-
-/* use this so we never inline in debug builds */
-#ifdef DEBUG
-    #define HH_INLINE
-#else
-    #define HH_INLINE inline
-#endif
-
-#endif /* __UTIL_H_ */

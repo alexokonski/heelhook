@@ -118,6 +118,21 @@ void darray_clear(darray* array)
 }
 
 /* 
+ * make the darray equal to the range [start, end).  if end is -1, 
+ * slice to the end of the darrray
+ */
+void darray_slice(darray* array, int start, int end)
+{
+    hhassert(start >= 0);
+    hhassert(end <= array->len);
+    hhassert(end >= start || end < 0);
+
+    if (end < 0) end = array->len;
+    memmove(array->data, array->data + start, end - start);
+    array->len = end - start;
+}
+
+/* 
  * ensure the darray has room for this many additional elements. usage:
  *
  * darray_ensure(&my_array, 10);
@@ -139,7 +154,7 @@ void darray_ensure(darray** array, int num_elems)
         (*array) = arr;
         if (arr == NULL) return;
 
-        arr->size_reserved += num_elems;
+        arr->size_reserved += num_new_elems;
     }
 }
 

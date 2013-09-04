@@ -32,10 +32,12 @@
 #ifndef __EVENT_H__
 #define __EVENT_H__
 
+/* flags for mask in add_io_event */
 #define EVENT_NONE 0
 #define EVENT_READABLE 1
 #define EVENT_WRITEABLE 2
 
+/* flags for event_pump_events */
 #define EVENT_DONT_BLOCK 1
 
 typedef enum

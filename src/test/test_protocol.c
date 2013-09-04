@@ -1,4 +1,4 @@
-/* test_network - test network module 
+/* test_protocol - test protocol module 
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -28,7 +28,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "../network.h"
+#include "../protocol.h"
 #include "../util.h"
 
 #include <stdio.h>
@@ -123,21 +123,22 @@ int main(int argc, char** argv)
 
     num_written += snprintf(&buffer[num_written], len - num_written, "\r\n");
     
-    darray* in_buffer = darray_create_data(
-        buffer, 
-        sizeof(char),
-        num_written, 
-        num_written
-    );
-    network_conn* conn = network_create_conn(1024, 20);
-    network_result r;
-    if ((r=network_read_handshake(conn, in_buffer)) != NETWORK_RESULT_SUCCESS)
+    protocol_settings settings;
+    settings.write_max_frame_size = 1024;
+    settings.read_max_msg_size = 65537;
+    settings.read_max_num_frames = 1024;
+    protocol_conn* conn = protocol_create_conn(&settings, 20);
+    darray_append(&conn->info.buffer, buffer, num_written);
+    protocol_result r;
+    protocol_handshake_result hr;
+    if ((hr=protocol_read_handshake(conn)) != 
+            PROTOCOL_HANDSHAKE_SUCCESS)
     {
-        printf("FAIL, HANDSHAKE RETURN: %d\n", r);
+        printf("FAIL, HANDSHAKE RETURN: %d\n", hr);
         exit(1);
     }
 
-    network_handshake* info = &conn->info;
+    protocol_handshake* info = &conn->info;
     if (strcmp(info->resource_name, RESOURCE_NAME) != 0)
     {
         printf(
@@ -165,18 +166,18 @@ int main(int argc, char** argv)
         for (int j = 0; g_headers[i].values[j] != NULL; j++)
         {
             int index = g_headers[i].value_index_start + j;
-            if (index >= network_get_num_header_values(conn, name))
+            if (index >= protocol_get_num_header_values(conn, name))
             {
                 printf(
                     "VALUE INDEX OUT OF BOUNDS: %s, %d, %d\n", 
                     name, 
                     index,
-                    network_get_num_header_values(conn, name)
+                    protocol_get_num_header_values(conn, name)
                 );
                 exit(1);
             }
 
-            const char* value = network_get_header_value(conn, name, index);
+            const char* value = protocol_get_header_value(conn, name, index);
             if (value == NULL)
             {
                 printf("NULL VALUE FOR NAME: %s\n", name);
@@ -195,10 +196,10 @@ int main(int argc, char** argv)
         }
     }
 
-    if ((r = network_write_handshake(conn, "chat", NULL)) 
-            != NETWORK_RESULT_SUCCESS)
+    if ((hr = protocol_write_handshake(conn, "chat", NULL)) 
+            != PROTOCOL_HANDSHAKE_SUCCESS)
     {
-        printf("FAIL WRITING HANDSHAKE: %d\n", r);
+        printf("FAIL WRITING HANDSHAKE: %d\n", hr);
         exit(1);
     }
 
@@ -228,16 +229,17 @@ int main(int argc, char** argv)
         sizeof(TEST_CLIENT_FRAME)
     );
 
-    network_msg msg;
-    r = network_read_msg(conn, 0, &msg);
+    protocol_msg msg;
+    size_t pos = 0;
+    r = protocol_read_msg(conn, &pos, &msg);
 
-    if (r != NETWORK_RESULT_SUCCESS)
+    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
         printf("RESULT MISMATCH: %d\n", r);
         exit(1);
     }
 
-    if (msg.type != NETWORK_MSG_TEXT)
+    if (msg.type != PROTOCOL_MSG_TEXT)
     {
         printf("MESSAGE SHOULD BE TEXT\n");
         exit(1);
@@ -271,30 +273,31 @@ int main(int argc, char** argv)
         sizeof(TEST_CLIENT_FRAG_1)
     );
     memset(&msg, 0, sizeof(msg));
-    r = network_read_msg(conn, 0, &msg);
+    pos = 0;
+    r = protocol_read_msg(conn, &pos, &msg);
 
-    if (r != NETWORK_RESULT_CONTINUE)
+    if (r != PROTOCOL_RESULT_FRAME_FINISHED)
     {
         printf("MESSAGE FRAGMENT RESULT MISMATCH: %d\n", r);
         exit(1);
     }
 
-    int start_pos = darray_get_len(conn->read_buffer);
+    size_t start_pos = darray_get_len(conn->read_buffer);
     darray_append(
         &conn->read_buffer,
         TEST_CLIENT_FRAG_2,
-        sizeof(TEST_CLIENT_FRAG_1)
+        sizeof(TEST_CLIENT_FRAG_2)
     );
 
-    r = network_read_msg(conn, start_pos, &msg);
+    r = protocol_read_msg(conn, &start_pos, &msg);
 
-    if (r != NETWORK_RESULT_SUCCESS)
+    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
         printf("NON-SUCCESS SECOND MSG FRAG: %d\n", r);
         exit(1);
     }
 
-    if (msg.type != NETWORK_MSG_TEXT)
+    if (msg.type != PROTOCOL_MSG_TEXT)
     {
         printf("FRAG TYPE MISMATCH: %d\n", msg.type);
         exit(1);
@@ -348,15 +351,16 @@ int main(int argc, char** argv)
     darray_add_len(conn->read_buffer, total_len);
 
     memset(&msg, 0, sizeof(msg));
-    r = network_read_msg(conn, 0, &msg);
+    pos = 0;
+    r = protocol_read_msg(conn, &pos, &msg);
  
-    if (r != NETWORK_RESULT_SUCCESS)
+    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
         printf("NON-SUCCESS LONG MSG FRAG: %d\n", r);
         exit(1);
     }
 
-    if (msg.type != NETWORK_MSG_BINARY)
+    if (msg.type != PROTOCOL_MSG_BINARY)
     {
         printf("LONG MSG TYPE MISMATCH: %d\n", msg.type);
         exit(1);
@@ -377,13 +381,13 @@ int main(int argc, char** argv)
     /*darray_clear(conn->write_buffer);*/
     size_t before_len = darray_get_len(conn->write_buffer); 
     static char out_message[] = "Hello";
-    conn->out_frame_max = 3;
-    msg.type = NETWORK_MSG_TEXT;
+    settings.write_max_frame_size = 3;
+    msg.type = PROTOCOL_MSG_TEXT;
     msg.data = out_message;
     msg.msg_len = sizeof(out_message) - 1;
-    r = network_write_msg(conn, &msg);
+    r = protocol_write_msg(conn, &msg);
 
-    if (r != NETWORK_RESULT_SUCCESS)
+    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
         printf("WRITE MSG RESULT FAIL: %d\n", r);
         exit(1);
@@ -422,22 +426,23 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    network_destroy_conn(conn);
+    protocol_destroy_conn(conn);
 
-    in_buffer = darray_create_data(
+    settings.write_max_frame_size = 1024;
+    conn = protocol_create_conn(&settings, 256);
+    darray_clear(conn->info.buffer);
+    darray_append(
+        &conn->info.buffer, 
         TEST_BROKEN_REQUEST_LINE, 
-        sizeof(char),
-        sizeof(TEST_BROKEN_REQUEST_LINE), 
         sizeof(TEST_BROKEN_REQUEST_LINE)
     );
-    conn = network_create_conn(1024, 256);
-    if ((r=network_read_handshake(conn, in_buffer)) != NETWORK_RESULT_FAIL)
+    if ((hr=protocol_read_handshake(conn)) == PROTOCOL_HANDSHAKE_SUCCESS)
     {
-        printf("FAIL, HANDSHAKE RETURN WAS SUCCESS: %d\n", r);
+        printf("FAIL, HANDSHAKE RETURN WAS SUCCESS: %d\n", hr);
         exit(1);
     }
 
-    network_destroy_conn(conn);
+    protocol_destroy_conn(conn);
     
     exit(0);
 }

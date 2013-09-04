@@ -3,15 +3,15 @@ WARN= -Wall -Wunused-parameter
 OPT?= -O2
 DEBUG= -g -ggdb
 SYMBOL= -D_BSD_SOURCE
-VPATH= test sha1 base64
+VPATH= test sha1 base64 servers
 
 FINAL_CFLAGS = $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(CFLAGS)
 FINAL_LDFLAGS = $(LDFLAGS) -g -ggdb
 TEST_LIBS = -pthread
-HEELHOOK_OBJECTS = hhmemory.o event.o darray.o network.o sha1.o cencode.o util.o
+HEELHOOK_OBJECTS = hhmemory.o event.o darray.o protocol.o sha1.o cencode.o util.o server.o error_code.o
 
 .PHONY: all
-all: heelhook 
+all: heelhook echoserver test
 
 .PHONY: debug
 debug: 
@@ -23,10 +23,9 @@ test_debug:
 
 
 heelhook: $(HEELHOOK_OBJECTS)
-	@echo "nothing yet!"
 
 .PHONY: test
-test: test_event test_darray test_network test_util
+test: test_event test_darray test_protocol test_util
 	@echo
 	@(bash runtests.sh $^)
 
@@ -36,11 +35,14 @@ test_event: test_event.o $(HEELHOOK_OBJECTS)
 test_darray: test_darray.o $(HEELHOOK_OBJECTS)
 	$(CC) $(TEST_LIBS) -o $@ $^
 
-test_network: test_network.o $(HEELHOOK_OBJECTS)
+test_protocol: test_protocol.o $(HEELHOOK_OBJECTS)
 	$(CC) $(TEST_LIBS) -o $@ $^
 
 test_util: test_util.o $(HEELHOOK_OBJECTS)
 	$(CC) $(TEST_LIBS) -o $@ $^
+
+echoserver: echoserver.o $(HEELHOOK_OBJECTS)
+	$(CC) -o $@ $^
 
 include Makefile.dep
 
@@ -53,8 +55,9 @@ dep:
 
 clean:
 	rm -rf *.o
+	rm -f echoserver
 	rm -f test_event
 	rm -f test_darray
-	rm -f test_network
+	rm -f test_protocol
 	rm -f test_util
 

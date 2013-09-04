@@ -1,5 +1,5 @@
-/* util - helpful utilities 
- * 
+/* config - configuration options for heelhook 
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *
@@ -28,36 +28,30 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __UTIL_H_
-#define __UTIL_H_
+#include "protocol.h"
 
-#include <stdint.h>
+#define CONFIG_LOG_LEVEL_DEBUG  0
+#define CONFIG_LOG_LEVEL_WARN   10
+#define CONFIG_LOG_LEVEL_ERROR  20
 
-/* min/max */
-#define hhmin(x, y) (((x) <= (y)) ? (x) : (y)) 
-#define hhmax(x, y) (((x) >= (y)) ? (x) : (y))
+#define CONFIG_LOG_LEVEL_DEBUG_STR "DEBUG"
+#define CONFIG_LOG_LEVEL_WARN_STR  "WARN"
+#define CONFIG_LOG_LEVEL_ERROR_STR "ERROR"
 
-/* countof static array */
-#define hhcountof(a) (sizeof(a)/sizeof(*(a)))
-#define hhunused(s) ((void)s)
+typedef struct
+{
+    char* bindaddr; /* addr to bind to, if NULL, all interfaces */
+    char* logfilepath; /* path to log file, NULL for stdout */
+    int port; /* port the server will listen on */
+    size_t protocol_buf_init_len; /* initital length for read/write buffers */  
+    int max_clients; /* max clients we allow connected */
+    protocol_settings conn_settings; /* settings for each connection */
+    int loglevel;
+} config_options;
 
-/* host <--> network byte order funcs, including uint64_t */
-uint32_t hh_htonl(uint32_t hostlong);
-uint16_t hh_htons(uint16_t hostshort);
-uint32_t hh_ntohl(uint32_t netlong);
-uint16_t hh_ntohs(uint16_t netshort);
-uint64_t hh_htonll(uint64_t hostlonglong);
-uint64_t hh_ntohll(uint64_t netlonglong);
+/* Parse settings from config_str into options */
+void config_parse_from_string(
+    const char* config_str, 
+    config_options* options
+);
 
-typedef char BOOL;
-#define TRUE  1
-#define FALSE 0
-
-/* use this so we never inline in debug builds */
-#ifdef DEBUG
-    #define HH_INLINE
-#else
-    #define HH_INLINE inline
-#endif
-
-#endif /* __UTIL_H_ */

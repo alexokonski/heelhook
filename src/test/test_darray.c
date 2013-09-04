@@ -135,7 +135,7 @@ int main(void)
     darray_append(&array, arr2, arr_size2);
     test_data(array, arr_both, arr_both_size * sizeof(int), END_ARGS);
     test_len(array, arr_both_size, END_ARGS);
-    test_size_reserved(array, 9, END_ARGS);
+    test_size_reserved(array, 12, END_ARGS);
     darray_destroy(array);
     
     exit(0);

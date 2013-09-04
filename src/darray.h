@@ -70,6 +70,12 @@ int darray_get_size_reserved(darray* array);
 void darray_clear(darray* array);
 
 /* 
+ * make the darray equal to the range [start, end).  if end is -1, 
+ * slice to the end of the darrray
+ */
+void darray_slice(darray* array, int start, int end);
+
+/* 
  * ensure the darray has room for this many additional elements. usage:
  *
  * darray_ensure(&my_array, 10);
