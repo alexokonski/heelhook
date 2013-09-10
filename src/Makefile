@@ -1,5 +1,5 @@
 STD= -std=c99 -pedantic
-WARN= -Wall -Wunused-parameter
+WARN= -Wall -Wextra
 OPT?= -O2
 DEBUG= -g -ggdb
 SYMBOL= -D_BSD_SOURCE

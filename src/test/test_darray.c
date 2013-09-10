@@ -49,7 +49,7 @@ static void test_failed_exit(const char* test, const char* file, int line)
 
 static void test_len(
     darray* array, 
-    int len, 
+    size_t len, 
     const char* test, 
     const char* file, 
     int line

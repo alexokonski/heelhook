@@ -56,7 +56,7 @@ static const struct
     {"Sec-WebSocket-Protocol", "otherchat", {"otherchat", NULL}, 2},
     {NULL, NULL, {NULL}, 0} /* Sentinel */
 };
-const int NUM_UNIQUE_HEADERS = 7;
+const uint32_t NUM_UNIQUE_HEADERS = 7;
 static char TEST_BROKEN_REQUEST_LINE[] = "GET /thing HTTP/1.1";
 static char TEST_RESPONSE[] = 
 "HTTP/1.1 101 Switching Protocols\r\n"
@@ -394,12 +394,12 @@ int main(int argc, char** argv)
     }
 
     size_t new_len = darray_get_len(conn->write_buffer) - before_len;
-    int total_msg_len = sizeof(TEST_SERVER_FRAG_1) + 
+    size_t total_msg_len = sizeof(TEST_SERVER_FRAG_1) + 
                         sizeof(TEST_SERVER_FRAG_2);
-    if (new_len != total_msg_len )
+    if (new_len != total_msg_len)
     {
         printf(
-            "WRITE MSG LEN WRONG %d %lu\n", 
+            "WRITE MSG LEN WRONG %lu %lu\n", 
             total_msg_len, 
             darray_get_len(conn->write_buffer)
         );

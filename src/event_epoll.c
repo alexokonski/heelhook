@@ -30,6 +30,7 @@
  */
 
 #include <sys/epoll.h>
+#include <string.h>
 
 typedef struct
 {

@@ -245,7 +245,7 @@ static int is_comma_delimited_header(const char* header)
         "TE"
     };
 
-    for (int i = 0; i < hhcountof(comma_headers); i++)
+    for (unsigned int i = 0; i < hhcountof(comma_headers); i++)
     {
         if (strcmp(header, comma_headers[i]) == 0)
         {
@@ -578,8 +578,13 @@ static protocol_result protocol_parse_frame_hdr(
         return PROTOCOL_RESULT_FAIL;
     }
     
-    if (conn->settings->read_max_msg_size != -1 &&
-        msg->msg_len + payload_len > conn->settings->read_max_msg_size) 
+    int64_t read_max_msg_size = conn->settings->read_max_msg_size;
+    /* 
+     * cast below is okay because we know read_max_msg_size is 
+     * non-negative
+     */
+    if (read_max_msg_size >= 0 &&
+        msg->msg_len + payload_len > (uint64_t)read_max_msg_size) 
         
     {
         handle_violation(
@@ -842,7 +847,7 @@ protocol_handshake_result protocol_write_handshake(
     );
 
     /* encode_blockend adds a \n... we want to null terminate */
-    int response_key_len = num_encoded - 1;
+    size_t response_key_len = num_encoded - 1;
     hhassert(response_key_len <= sizeof(response_key));
     response_key[response_key_len] = '\0';
 
@@ -943,7 +948,7 @@ int protocol_get_num_header_values(protocol_conn* conn, const char* name)
 const char* protocol_get_header_value(
     protocol_conn* conn, 
     const char* name, 
-    int index
+    uint32_t index
 )
 {
     protocol_header* headers = darray_get_data(conn->info.headers);
@@ -953,7 +958,7 @@ const char* protocol_get_header_value(
     {
         if (strcasecmp(name, headers[i].name) == 0)
         {
-            hhassert(index >= 0 && index < darray_get_len(headers[i].values));
+            hhassert(index < darray_get_len(headers[i].values));
             char** values = darray_get_data(headers[i].values);
             return values[index];
         }
@@ -1286,12 +1291,12 @@ protocol_result protocol_write_msg(
     int64_t msg_len = write_msg->msg_len;
     char* msg_data = write_msg->data;
     int64_t max_frame_size = conn->settings->write_max_frame_size;
-    if (max_frame_size == -1) max_frame_size = INT64_MAX;
+    if (max_frame_size < 0) max_frame_size = INT64_MAX;
 
     protocol_opcode opcode = opcode_from_msg_type(msg_type);
 
     /* please provide valid inputs... */
-    if (msg_len < 0 || max_frame_size <= 0)
+    if (msg_len < 0)
     {
         return PROTOCOL_RESULT_FAIL;
     }
@@ -1307,12 +1312,12 @@ protocol_result protocol_write_msg(
         return PROTOCOL_RESULT_FAIL;
     }
 
-    size_t num_written = 0;
-    size_t payload_num_written = 0;
+    int64_t num_written = 0;
+    int64_t payload_num_written = 0;
     do
     {
-        size_t num_remaining = msg_len - payload_num_written;
-        uint64_t payload_len = hhmin(num_remaining, max_frame_size);
+        int64_t num_remaining = msg_len - payload_num_written;
+        int64_t payload_len = hhmin(num_remaining, max_frame_size);
         int num_extra_len_bytes = get_num_extra_len_bytes(payload_len);
         size_t total_frame_len = 2 + num_extra_len_bytes + payload_len;
         

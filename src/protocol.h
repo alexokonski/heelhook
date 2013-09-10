@@ -188,7 +188,7 @@ typedef struct
      * number of message fragments read in the message we're currently 
      * parsing 
      */
-    int num_fragments_read;
+    int64_t num_fragments_read;
 
     /* info about this connection from handshake */
     protocol_handshake info; 
@@ -271,7 +271,7 @@ int protocol_get_num_header_values(protocol_conn* conn, const char* name);
 const char* protocol_get_header_value(
     protocol_conn* conn, 
     const char* name, 
-    int index
+    uint32_t index
 );
 
 /*
