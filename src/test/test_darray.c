@@ -48,10 +48,10 @@ static void test_failed_exit(const char* test, const char* file, int line)
 }
 
 static void test_len(
-    darray* array, 
-    size_t len, 
-    const char* test, 
-    const char* file, 
+    darray* array,
+    size_t len,
+    const char* test,
+    const char* file,
     int line
 )
 {
@@ -59,23 +59,23 @@ static void test_len(
 }
 
 static void test_size_reserved(
-    darray* array, 
-    int size_reserved, 
+    darray* array,
+    int size_reserved,
     const char* test,
-    const char* file, 
+    const char* file,
     int line
 )
 {
-    EXIT_IF_FAIL(darray_get_size_reserved(array) == size_reserved, 
+    EXIT_IF_FAIL(darray_get_size_reserved(array) == size_reserved,
             test, file, line);
 }
 
 static void test_data(
-    darray* array, 
-    void* data, 
-    size_t data_len, 
+    darray* array,
+    void* data,
+    size_t data_len,
     const char* test,
-    const char* file, 
+    const char* file,
     int line
 )
 {
@@ -89,10 +89,10 @@ int main(void)
 
     /* 0 size array */
     const char* cur_test = "0 size array";
-    darray* array = darray_create(sizeof(char), 0); 
+    darray* array = darray_create(sizeof(char), 0);
     test_len(array, 0, END_ARGS);
     test_size_reserved(array, 0, END_ARGS);
-    if (darray_get_data(array) != NULL) 
+    if (darray_get_data(array) != NULL)
         test_failed_exit(cur_test, __FILE__, __LINE__);
     darray_destroy(array);
 
@@ -116,8 +116,8 @@ int main(void)
 
     darray_append(&array, arr, arr_size);
     test_data(
-        array, 
-        arr, 
+        array,
+        arr,
         arr_size * sizeof(int),
         END_ARGS
     );
@@ -137,6 +137,6 @@ int main(void)
     test_len(array, arr_both_size, END_ARGS);
     test_size_reserved(array, 12, END_ARGS);
     darray_destroy(array);
-    
+
     exit(0);
 }

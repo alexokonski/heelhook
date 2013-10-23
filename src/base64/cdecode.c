@@ -26,18 +26,18 @@ void base64_init_decodestate(base64_decodestate* state_in)
 }
 
 int base64_decode_block(
-    const char* code_in, 
-    const int length_in, 
-    char* plaintext_out, 
+    const char* code_in,
+    const int length_in,
+    char* plaintext_out,
     base64_decodestate* state_in
 )
 {
     const char* codechar = code_in;
     char* plainchar = plaintext_out;
     char fragment;
-    
+
     *plainchar = state_in->plainchar;
-    
+
     switch (state_in->step)
     {
         while (1)

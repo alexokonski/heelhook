@@ -1,4 +1,4 @@
-/* inlist - a collection of macros for doing in-place linked lists 
+/* inlist - a collection of macros for doing in-place linked lists
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.

@@ -1,4 +1,4 @@
-/* protocol - serialize messages conforming to RFC 6455 
+/* protocol - serialize messages conforming to RFC 6455
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -65,7 +65,7 @@ typedef enum
     PROTOCOL_OPCODE_RESERVE15     /* 0x0F */
 } protocol_opcode;
 
-typedef enum 
+typedef enum
 {
     PROTOCOL_STATE_READ_HANDSHAKE,
     PROTOCOL_STATE_WRITE_HANDSHAKE,
@@ -104,7 +104,7 @@ typedef struct
 } protocol_offset_msg;
 
 /* represents a WebSocket frame header */
-typedef struct 
+typedef struct
 {
     protocol_opcode opcode;
     protocol_msg_type msg_type;
@@ -140,24 +140,24 @@ typedef struct
 /* settings for a connection */
 typedef struct
 {
-    /* 
-     * written messages will be broken up into frames of this size, 
+    /*
+     * written messages will be broken up into frames of this size,
      * -1 is no limit
      */
     int64_t write_max_frame_size;
 
     /* max size of the whole message, -1 is no limit */
-    int64_t read_max_msg_size;    
+    int64_t read_max_msg_size;
 
     /* max frames allowed in a message, -1 is no limit */
-    int64_t read_max_num_frames;  
+    int64_t read_max_num_frames;
 
-    /* 
-     * whether or not this connection should fail by closing the tcp 
-     * connection in the event of a protocol error, rather than a closing 
-     * handshake 
+    /*
+     * whether or not this connection should fail by closing the tcp
+     * connection in the event of a protocol error, rather than a closing
+     * handshake
      */
-    BOOL fail_by_drop; 
+    BOOL fail_by_drop;
 } protocol_settings;
 
 /* represents the buffers/info for a websocket connection */
@@ -165,13 +165,13 @@ typedef struct
 {
     /* settings for this connection */
     protocol_settings* settings;
-    
+
     /* current state of this connection */
     protocol_state state;
-    
+
     /* char* buffer used for reading from a client */
     darray* read_buffer;
-    
+
     /* char* buffer used for writing to a client */
     darray* write_buffer;
 
@@ -184,23 +184,24 @@ typedef struct
     /* utf8 validator state for the current frame we're reading */
     protocol_utf8_valid_state valid_state;
 
-    /* 
-     * number of message fragments read in the message we're currently 
-     * parsing 
+    /*
+     * number of message fragments read in the message we're currently
+     * parsing
      */
     int64_t num_fragments_read;
 
     /* info about this connection from handshake */
-    protocol_handshake info; 
+    protocol_handshake info;
 
     /* whether or not this connection should be closed */
-    BOOL should_close; 
+    BOOL should_close;
 
-    /* 
-     * if should_close is true, contains a message to send to clients 
-     * upon closing 
+    /*
+     * if should_close is true, contains a message to send to clients
+     * upon closing
      */
-    const char* error_msg; 
+    const char* error_msg;
+    int error_len;
 
     /*
      * if should_close is TRUE, contains the error code to send to
@@ -214,12 +215,12 @@ typedef struct
  * the caller is responsible for the settings object
  */
 protocol_conn* protocol_create_conn(
-    protocol_settings* settings, 
+    protocol_settings* settings,
     size_t init_buf_len
 );
 
 /*
- * initialize an already allocated protocol_conn. allocates read and 
+ * initialize an already allocated protocol_conn. allocates read and
  * write buffers
 */
 int protocol_init_conn(
@@ -228,13 +229,13 @@ int protocol_init_conn(
     size_t init_buf_len
 );
 
-/* 
+/*
  * free/destroy a protocol_conn
  */
 void protocol_destroy_conn(protocol_conn* conn);
 
-/* 
- * destroy everything in the conn but leave the conn intact 
+/*
+ * destroy everything in the conn but leave the conn intact
  */
 void protocol_deinit_conn(protocol_conn* conn);
 
@@ -243,19 +244,19 @@ void protocol_deinit_conn(protocol_conn* conn);
  */
 void protocol_reset_conn(protocol_conn* conn);
 
-/* 
+/*
  * parse the handshake from conn->info.buffer. On success, advances state from
  * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_WRITE_HANDSHAKE
  */
 protocol_handshake_result protocol_read_handshake(protocol_conn* conn);
 
-/* 
+/*
  * write the handshake response to conn->write_buffer.  must be called after
  * protocol_read_handshake.  on success, advances state from
  * PROTOCOL_STATE_WRITE_HANDSHAKE -> PROTOCOL_STATE_CONNECTED
  */
 protocol_handshake_result protocol_write_handshake(
-    protocol_conn* conn, 
+    protocol_conn* conn,
     const char* protocol,
     const char* extensions
 );
@@ -269,31 +270,43 @@ int protocol_get_num_header_values(protocol_conn* conn, const char* name);
  * Get one of the values retrieved for a header
  */
 const char* protocol_get_header_value(
-    protocol_conn* conn, 
-    const char* name, 
-    uint32_t index
+    protocol_conn* conn,
+    const char* name,
+    int index
 );
 
 /*
- * process a frame from the read buffer starting at start_pos into 
+ * Helper for easily getting the number of values the client sent in the
+ * Sec-WebSocket-Protocol header
+ */
+int protocol_get_num_subprotocols(protocol_conn* conn);
+
+/*
+ * Helper for getting values of the Sec-WebSocket-Protocol header sent by
+ * the client
+ */
+const char* protocol_get_subprotocol(protocol_conn* conn, int index);
+
+/*
+ * process a frame from the read buffer starting at start_pos into
  * conn->read_msg. read_msg will contain the read message if protocol_result
  * is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is untouched.
  * The data pointer in read_msg will be a pointer into conn->read_buffer,
  * and as such will NOT be valid after any changes to conn->read_buffer
  */
 protocol_result protocol_read_msg(
-    protocol_conn* conn, 
-    size_t* start_pos, 
+    protocol_conn* conn,
+    size_t* start_pos,
     protocol_msg* read_msg
 );
 
-/* 
+/*
  * write the handshake response to conn->write_buffer.  must be called after
  * protocol_read_handshake.  on success, DOES NOT advance state.  This should
  * be done after the write buffer has actually be written to a socket.
  */
 protocol_result protocol_write_msg(
-    protocol_conn* conn, 
+    protocol_conn* conn,
     protocol_msg* write_msg
 );
 

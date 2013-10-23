@@ -1,5 +1,5 @@
-/* util - helpful utilities 
- * 
+/* util - helpful utilities
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *
@@ -64,7 +64,7 @@ static uint64_t util_longlong_swap(uint64_t longlong)
 
     if (g_system_endian == UTIL_BIG_ENDIAN) return longlong;
 
-    uint64_t result = 
+    uint64_t result =
         ((longlong & 0x00000000000000ff) << 56) |
         ((longlong & 0x000000000000ff00) << 40) |
         ((longlong & 0x0000000000ff0000) << 24) |
@@ -73,7 +73,7 @@ static uint64_t util_longlong_swap(uint64_t longlong)
         ((longlong & 0x0000ff0000000000) >> 24) |
         ((longlong & 0x00ff000000000000) >> 40) |
         ((longlong & 0xff00000000000000) >> 56);
-     
+
     return result;
 }
 

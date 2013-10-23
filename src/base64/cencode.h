@@ -25,9 +25,9 @@ void base64_init_encodestate(base64_encodestate* state_in);
 char base64_encode_value(char value_in);
 
 int base64_encode_block(
-    const char* plaintext_in, 
-    int length_in, 
-    char* code_out, 
+    const char* plaintext_in,
+    int length_in,
+    char* code_out,
     base64_encodestate* state_in
 );
 

@@ -1,7 +1,7 @@
 /* darray - generic, dynamically sizing array type.  You can add/remove stuff
- *          to the raw data if you want, it's on you to call the proper 
+ *          to the raw data if you want, it's on you to call the proper
  *          functions
- * 
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *
@@ -45,9 +45,9 @@ struct darray
     char data[];
 };
 
-/* 
- * make a darray.  init_size_reserved is the number of elements you want 
- * space for right now. 
+/*
+ * make a darray.  init_size_reserved is the number of elements you want
+ * space for right now.
  */
 darray* darray_create(size_t elem_size, int init_size_reserved)
 {
@@ -61,13 +61,13 @@ darray* darray_create(size_t elem_size, int init_size_reserved)
     return array;
 }
 
-/* 
- * make a darray and initialize it with data. 
+/*
+ * make a darray and initialize it with data.
  * init_size_reserved must be >= num_elemnts
  */
 darray* darray_create_data(
-    void* data, 
-    size_t elem_size, 
+    void* data,
+    size_t elem_size,
     int num_elements,
     int init_size_reserved
 )
@@ -117,8 +117,8 @@ void darray_clear(darray* array)
     array->len = 0;
 }
 
-/* 
- * make the darray equal to the range [start, end).  if end is -1, 
+/*
+ * make the darray equal to the range [start, end).  if end is -1,
  * slice to the end of the darrray
  */
 void darray_slice(darray* array, int start, int end)
@@ -132,11 +132,11 @@ void darray_slice(darray* array, int start, int end)
     array->len = end - start;
 }
 
-/* 
+/*
  * ensure the darray has room for this many additional elements. usage:
  *
  * darray_ensure(&my_array, 10);
- */ 
+ */
 void darray_ensure(darray** array, int num_elems)
 {
     darray* arr = *array;
@@ -147,7 +147,7 @@ void darray_ensure(darray** array, int num_elems)
     {
         int num_extra = (len + num_elems) - reserved;
         int num_new_elems = hhmax(num_extra, reserved * 2);
-        int new_size = 
+        int new_size =
             (arr->elem_size * (reserved + num_new_elems)) + sizeof(darray);
 
         arr = hhrealloc(arr, new_size);
@@ -165,11 +165,11 @@ void darray_add_len(darray* array, int num_elems)
     array->len += num_elems;
 }
 
-/* 
- * append some elements to the array, expanding if needed. usage: 
+/*
+ * append some elements to the array, expanding if needed. usage:
  *
  * darray_append(&my_array, my_data, 10);
- */ 
+ */
 void darray_append(darray** array, const void* data, int num_elems)
 {
     darray_ensure(array, num_elems);

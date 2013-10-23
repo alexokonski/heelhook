@@ -1,4 +1,4 @@
-/* server - handles client connections and sending/receiving data 
+/* server - handles client connections and sending/receiving data
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -59,9 +59,10 @@ struct server_conn
     BOOL close_received;
     BOOL close_sent;
     BOOL close_send_pending;
+    BOOL should_fail;
     size_t write_pos;
     size_t read_pos;
-    protocol_conn pconn; 
+    protocol_conn pconn;
     server* serv;
     server_conn* next;
     server_conn* prev;
@@ -82,14 +83,14 @@ struct server
 };
 
 static server_result server_conn_send_pmsg(
-    server_conn* conn, 
+    server_conn* conn,
     protocol_msg* pmsg
 );
 
 static void server_log(
-    config_options* options, 
-    int level, 
-    const char* format, 
+    config_options* options,
+    int level,
+    const char* format,
     ...
 )
 {
@@ -111,7 +112,7 @@ static void server_log(
     va_start(list, format);
     vsnprintf(buffer, sizeof(buffer), format, list);
     va_end(list);
-    
+
     struct timeval tv;
     char time_buffer[64];
     gettimeofday(&tv, NULL);
@@ -143,7 +144,7 @@ static void server_log(
             level_str = CONFIG_LOG_LEVEL_ERROR_STR;
             break;
 
-        default: 
+        default:
             break;
     }
 
@@ -163,8 +164,8 @@ static void server_log(
 static int init_conn(server_conn* conn, server* serv)
 {
     int r = protocol_init_conn(
-        &conn->pconn, 
-        &serv->options.conn_settings, 
+        &conn->pconn,
+        &serv->options.conn_settings,
         serv->options.protocol_buf_init_len
     );
     conn->serv = serv;
@@ -173,7 +174,8 @@ static int init_conn(server_conn* conn, server* serv)
     conn->close_received = FALSE;
     conn->close_sent = FALSE;
     conn->close_send_pending = FALSE;
-    
+    conn->should_fail = FALSE;
+
     /*return 0;*/
     return r;
 }
@@ -187,7 +189,7 @@ static server_conn* activate_conn(server* serv, int client_fd)
 {
     if (serv->free_head == NULL) return NULL;
 
-    server_conn* conn = serv->free_head; 
+    server_conn* conn = serv->free_head;
 
     /* pop the next free connection object off the head of the list */
     INLIST_REMOVE(serv, conn, next, prev, free_head, free_tail);
@@ -201,10 +203,11 @@ static server_conn* activate_conn(server* serv, int client_fd)
     conn->close_received = FALSE;
     conn->close_sent = FALSE;
     conn->close_send_pending = FALSE;
-    
+    conn->should_fail = FALSE;
+
     /*protocol_init_conn(
-        &conn->pconn, 
-        &serv->options.conn_settings, 
+        &conn->pconn,
+        &serv->options.conn_settings,
         serv->options.protocol_buf_init_len
     );*/
 
@@ -217,10 +220,20 @@ static void deactivate_conn(server_conn* conn)
 {
     server* serv = conn->serv;
 
+    if (serv->callbacks.on_close_callback != NULL)
+    {
+        serv->callbacks.on_close_callback(
+            conn,
+            conn->pconn.error_code,
+            conn->pconn.error_msg,
+            conn->pconn.error_len
+        );
+    }
+
     /* take this client out of the event loop */
     event_delete_io_event(
-        serv->loop, 
-        conn->fd, 
+        serv->loop,
+        conn->fd,
         EVENT_READABLE | EVENT_WRITEABLE
     );
 
@@ -249,18 +262,18 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
     while (conn->write_pos < buf_len)
     {
         num_written = write(
-            fd, 
-            &out_buf[conn->write_pos], 
+            fd,
+            &out_buf[conn->write_pos],
             buf_len - conn->write_pos
         );
         if (num_written <= 0) break;
 
-        if (num_written > 0) 
+        if (num_written > 0)
         {
             /*server_log(
                 &conn->serv->options,
                 CONFIG_LOG_LEVEL_DEBUG,
-                "WROTE %lu bytes", 
+                "WROTE %lu bytes",
                 buf_len - conn->write_pos
             );*/
         }
@@ -287,10 +300,10 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
     {
         if (conn->close_send_pending) conn->close_sent = TRUE;
 
-        /*if (conn->close_received && conn->close_sent)*/
-        if (conn->close_sent)
+        /* if (conn->close_received && conn->close_sent) */
+        if (conn->close_sent && (conn->should_fail || conn->close_received))
         {
-            /* 
+            /*
              * if we just sent a close message and we've received one already
              * the websocket connection is fully closed and we're done
              */
@@ -298,15 +311,15 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
         }
         else
         {
-            /* 
-             * we've sent everything on our write buffer, clean up 
+            /*
+             * we've sent everything on our write buffer, clean up
              * and get rid of the write callback
              */
             darray_clear(pconn->write_buffer);
             conn->write_pos = 0;
-            event_delete_io_event(loop, fd, EVENT_WRITEABLE); 
+            event_delete_io_event(loop, fd, EVENT_WRITEABLE);
 
-            /* 
+            /*
              * if we're in the write handshake state, we just wrote
              * the handshake and we're now connected
              */
@@ -335,16 +348,9 @@ static void parse_client_messages(server_conn* conn)
             switch (msg.type)
             {
             case PROTOCOL_MSG_NONE:
-                /* 
-                 * this should never happen, unless !fail_by_drop, 
-                 * and parse garbage data 
-                 */
-                if (conn->pconn.settings->fail_by_drop)
-                {
-                    hhassert(0);
-                }
+                hhassert(0);
                 break;
-            case PROTOCOL_MSG_TEXT:    
+            case PROTOCOL_MSG_TEXT:
                 is_text = TRUE; /* fallthru */
             case PROTOCOL_MSG_BINARY:
                 if (!should_close)
@@ -355,7 +361,7 @@ static void parse_client_messages(server_conn* conn)
                     if (conn->serv->callbacks.on_message_callback != NULL)
                     {
                         conn->serv->callbacks.on_message_callback(
-                            conn, 
+                            conn,
                             &smsg
                         );
                     }
@@ -369,6 +375,18 @@ static void parse_client_messages(server_conn* conn)
                 }
                 else
                 {
+                    if (msg.msg_len >= (int)sizeof(uint16_t))
+                    {
+                        uint16_t code = *((uint16_t*)msg.data);
+                        conn->pconn.error_code = hh_ntohs(code);
+
+                        conn->pconn.error_msg =
+                            (msg.data != NULL)
+                                ? (msg.data + sizeof(uint16_t))
+                                : NULL;
+                        conn->pconn.error_len =
+                            msg.msg_len - sizeof(uint16_t);
+                    }
                     server_conn_send_pmsg(conn, &msg);
                     conn->close_send_pending = TRUE;
                     conn->close_received = TRUE;
@@ -405,18 +423,20 @@ static void parse_client_messages(server_conn* conn)
 
         if (should_close && !conn->close_send_pending)
         {
+            conn->should_fail = TRUE;
             server_conn_close(
-                conn, 
-                conn->pconn.error_code, 
-                conn->pconn.error_msg
+                conn,
+                conn->pconn.error_code,
+                conn->pconn.error_msg,
+                conn->pconn.error_len
             );
             return;
         }
 
-    } while (r != PROTOCOL_RESULT_CONTINUE && 
+    } while (r != PROTOCOL_RESULT_CONTINUE &&
              conn->read_pos < darray_get_len(conn->pconn.read_buffer));
 
-    /* 
+    /*
      * we just finished parsing a data message.  we don't need the data
      * for it anymore, so slice it off the buffer
      */
@@ -430,15 +450,16 @@ static void parse_client_messages(server_conn* conn)
 static void read_client_handshake(server_conn* conn)
 {
     protocol_handshake_result hr = protocol_read_handshake(&conn->pconn);
+    server* serv = conn->serv;
 
     switch (hr)
     {
     case PROTOCOL_HANDSHAKE_SUCCESS:
         break;
     case PROTOCOL_HANDSHAKE_CONTINUE:
-        /* 
-         * apparently we didn't read the whole thing... 
-         * keep waiting 
+        /*
+         * apparently we didn't read the whole thing...
+         * keep waiting
          */
         return;
     case PROTOCOL_HANDSHAKE_FAIL:
@@ -455,8 +476,15 @@ static void read_client_handshake(server_conn* conn)
         return;
     }
 
+    if (serv->callbacks.on_open_callback != NULL &&
+        !serv->callbacks.on_open_callback(conn))
+    {
+        deactivate_conn(conn);
+        return;
+    }
+
     /* TODO: allow server to provide subprotocols/extensions desired... */
-    if ((hr = protocol_write_handshake(&conn->pconn, NULL, NULL)) != 
+    if ((hr = protocol_write_handshake(&conn->pconn, NULL, NULL)) !=
             PROTOCOL_HANDSHAKE_SUCCESS)
     {
         server_log(
@@ -469,7 +497,7 @@ static void read_client_handshake(server_conn* conn)
         deactivate_conn(conn);
         return;
     }
-    
+
     /* queue up writing the handshake response back */
     event_result er = event_add_io_event(
         conn->serv->loop,
@@ -499,18 +527,18 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
     server_conn* conn = data;
     protocol_conn* pconn = &conn->pconn;
 
-    /* 
-     * we're trying to close the connection and we already heard the client 
-     * agrees... don't read anything more 
+    /*
+     * we're trying to close the connection and we already heard the client
+     * agrees... don't read anything more
      */
     /*if (conn->close_send_pending && conn->close_received)*/
-    if (conn->close_send_pending)
+    if (conn->close_received)
     {
         return;
     }
 
-    /* 
-     * figure out which buffer to read into.  We have a separate buffer for 
+    /*
+     * figure out which buffer to read into.  We have a separate buffer for
      * handshake info we want to keep around for the duration of the connection
      */
     size_t read_len;
@@ -532,7 +560,7 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
     darray_ensure(read_buffer, read_len);
     char* buf = darray_get_data((*read_buffer));
     buf = &buf[end_pos];
-    
+
     num_read = read(fd, buf, read_len);
 
     if (num_read == -1)
@@ -598,7 +626,7 @@ static void accept_callback(event_loop* loop, int fd, void* data)
     if (client_fd == -1)
     {
         server_log(
-            &serv->options, 
+            &serv->options,
             CONFIG_LOG_LEVEL_ERROR,
             "-1 fd when accepting socket, fd: %d",
             fd
@@ -641,9 +669,9 @@ static void accept_callback(event_loop* loop, int fd, void* data)
 server* server_create(config_options* options, server_callbacks* callbacks)
 {
     int i = 0;
-    server* serv = hhmalloc(sizeof(*serv)); 
+    server* serv = hhmalloc(sizeof(*serv));
     if (serv == NULL) return NULL;
-    
+
     serv->stopping = 0;
     serv->active_head = NULL;
     serv->active_tail = NULL;
@@ -658,15 +686,15 @@ server* server_create(config_options* options, server_callbacks* callbacks)
     serv->loop = event_create_loop(options->max_clients + 1024);
     if (serv->loop == NULL) goto err_create;
 
-    /* 
-     * all available connection objects are 'free', initialize each and add it 
-     * to the free list 
+    /*
+     * all available connection objects are 'free', initialize each and add it
+     * to the free list
      */
     for (i = 0; i < max_clients; i++)
     {
         server_conn* conn = &serv->connections[i];
         INLIST_APPEND(serv, conn,  next, prev, free_head, free_tail);
-        if (init_conn(conn, serv) < 0) 
+        if (init_conn(conn, serv) < 0)
         {
             i++; /* need to do this so loop in err_create works correctly */
             goto err_create;
@@ -691,7 +719,7 @@ err_create:
 }
 
 static server_result server_conn_send_pmsg(
-    server_conn* conn, 
+    server_conn* conn,
     protocol_msg* pmsg
 )
 {
@@ -701,9 +729,9 @@ static server_result server_conn_send_pmsg(
     }
 
     protocol_result pr;
-    if ((pr = protocol_write_msg(&conn->pconn, pmsg)) != 
+    if ((pr = protocol_write_msg(&conn->pconn, pmsg)) !=
             PROTOCOL_RESULT_MESSAGE_FINISHED)
-    {       
+    {
         server_log(
             &conn->serv->options,
             CONFIG_LOG_LEVEL_ERROR,
@@ -732,12 +760,12 @@ static server_result server_conn_send_pmsg(
         return SERVER_RESULT_FAIL;
     }
 
-    return SERVER_RESULT_SUCCESS;  
+    return SERVER_RESULT_SUCCESS;
 }
 
 /* queue up a message to send on this connection */
 server_result server_conn_send_msg(server_conn* conn, server_msg* msg)
-{ 
+{
     protocol_msg pmsg;
     pmsg.data = msg->data;
     pmsg.msg_len = msg->msg_len;
@@ -748,78 +776,114 @@ server_result server_conn_send_msg(server_conn* conn, server_msg* msg)
 
 /* send a ping with payload (NULL for no payload)*/
 server_result server_conn_send_ping(
-    server_conn* conn, 
-    char* payload, 
+    server_conn* conn,
+    char* payload,
     int64_t payload_len
 )
 {
     protocol_msg pmsg;
     pmsg.data = payload;
     pmsg.msg_len = payload_len;
-    pmsg.type = PROTOCOL_MSG_PING; 
+    pmsg.type = PROTOCOL_MSG_PING;
 
     return server_conn_send_pmsg(conn, &pmsg);
 }
 
 /* send a pong with payload (NULL for no payload)*/
 server_result server_conn_send_pong(
-    server_conn* conn, 
-    char* payload, 
+    server_conn* conn,
+    char* payload,
     int64_t payload_len
 )
 {
     protocol_msg pmsg;
     pmsg.data = payload;
     pmsg.msg_len = payload_len;
-    pmsg.type = PROTOCOL_MSG_PONG; 
+    pmsg.type = PROTOCOL_MSG_PONG;
 
     return server_conn_send_pmsg(conn, &pmsg);
 }
 
-/* 
- * close this connection. sends a close message with the error 
- * code and reason 
+/*
+ * close this connection. sends a close message with the error
+ * code and reason
  */
 server_result server_conn_close(
     server_conn* conn,
     uint16_t code,
-    const char* reason
+    const char* reason,
+    int reason_len
 )
 {
     protocol_msg msg;
-    size_t reason_len = strlen(reason);
-    size_t data_len = sizeof(code) + reason_len;
-    char* orig_data = hhmalloc(data_len);
-    char* data = orig_data;
-    uint16_t* code_data = (uint16_t*)data;
-    *code_data = hh_htons(code);
-    data += sizeof(code);
-    memcpy(data, reason, reason_len); /* purposely leave out terminator */
-    
-    msg.type = PROTOCOL_MSG_CLOSE;
-    msg.data = orig_data;
-    msg.msg_len = data_len;
-    server_result r = server_conn_send_pmsg(conn, &msg);
-    conn->close_send_pending = TRUE;
+    size_t data_len = 0;
+    char* orig_data = NULL;
+    char* data = NULL;
+    uint16_t* code_data = NULL;
+    server_result r = SERVER_RESULT_SUCCESS;
 
-    hhfree(orig_data);
+    switch (conn->pconn.state)
+    {
+    case PROTOCOL_STATE_READ_HANDSHAKE:
+    case PROTOCOL_STATE_WRITE_HANDSHAKE:
+        deactivate_conn(conn);
+        return r;
+
+    case PROTOCOL_STATE_CONNECTED:
+        data_len = sizeof(code) + reason_len;
+        orig_data = hhmalloc(data_len);
+        data = orig_data;
+        code_data = (uint16_t*)data;
+        *code_data = hh_htons(code);
+        data += sizeof(code);
+
+        /* purposely leave out terminator */
+        memcpy(data, reason, reason_len);
+
+        msg.type = PROTOCOL_MSG_CLOSE;
+        msg.data = orig_data;
+        msg.msg_len = data_len;
+        r = server_conn_send_pmsg(conn, &msg);
+        conn->close_send_pending = TRUE;
+
+        hhfree(orig_data);
+        break;
+    }
 
     return r;
+}
+
+/*
+ * get number of subprotocols the client reported they support
+ */
+int server_get_num_client_subprotocols(server_conn* conn)
+{
+    return protocol_get_num_subprotocols(&conn->pconn);
+}
+
+/*
+ * stop the server, close all connections. will cause server_listen
+ * to return eventually
+ */
+const char* server_get_client_subprotocol(server_conn* conn, int index)
+{
+    return protocol_get_subprotocol(&conn->pconn, index);
 }
 
 void server_stop(server* serv)
 {
     INLIST_FOREACH(
-        serv, 
-        server_conn, 
-        conn, 
-        next, 
-        prev, 
-        active_head, 
+        serv,
+        server_conn,
+        conn,
+        next,
+        prev,
+        active_head,
         active_tail
     )
     {
-        server_conn_close(conn, HH_ERROR_GOING_AWAY, "server shutting down");
+        const char msg[] = "server shutting down";
+        server_conn_close(conn, HH_ERROR_GOING_AWAY, msg, sizeof(msg)-1);
     }
     serv->stopping = 1;
 }
@@ -845,7 +909,7 @@ server_result server_listen(server* serv)
     addr.sin_family = AF_INET;
     addr.sin_port = htons(opt->port);
     addr.sin_addr.s_addr = hh_htonl(INADDR_ANY);
-    if (opt->bindaddr != NULL && 
+    if (opt->bindaddr != NULL &&
         inet_aton(opt->bindaddr, &addr.sin_addr) != 0)
     {
         server_log(
@@ -878,7 +942,7 @@ server_result server_listen(server* serv)
         );
         return SERVER_RESULT_FAIL;
     }
-   
+
     event_result r = event_add_io_event(
         serv->loop,
         s,
@@ -886,7 +950,7 @@ server_result server_listen(server* serv)
         accept_callback,
         serv
     );
-    
+
     if (r != EVENT_RESULT_SUCCESS)
     {
         server_log(
@@ -898,7 +962,7 @@ server_result server_listen(server* serv)
         return SERVER_RESULT_FAIL;
     }
 
-    event_pump_events(serv->loop, 0);  
+    event_pump_events(serv->loop, 0);
     return SERVER_RESULT_SUCCESS;
 }
 

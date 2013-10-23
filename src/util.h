@@ -1,5 +1,5 @@
-/* util - helpful utilities 
- * 
+/* util - helpful utilities
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *
@@ -34,7 +34,7 @@
 #include <stdint.h>
 
 /* min/max */
-#define hhmin(x, y) (((x) <= (y)) ? (x) : (y)) 
+#define hhmin(x, y) (((x) <= (y)) ? (x) : (y))
 #define hhmax(x, y) (((x) >= (y)) ? (x) : (y))
 
 /* countof static array */

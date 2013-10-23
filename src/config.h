@@ -1,4 +1,4 @@
-/* config - configuration options for heelhook 
+/* config - configuration options for heelhook
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -43,7 +43,7 @@ typedef struct
     char* bindaddr; /* addr to bind to, if NULL, all interfaces */
     char* logfilepath; /* path to log file, NULL for stdout */
     int port; /* port the server will listen on */
-    size_t protocol_buf_init_len; /* initital length for read/write buffers */  
+    size_t protocol_buf_init_len; /* initital length for read/write buffers */
     int max_clients; /* max clients we allow connected */
     protocol_settings conn_settings; /* settings for each connection */
     int loglevel;
@@ -51,7 +51,7 @@ typedef struct
 
 /* Parse settings from config_str into options */
 void config_parse_from_string(
-    const char* config_str, 
+    const char* config_str,
     config_options* options
 );
 

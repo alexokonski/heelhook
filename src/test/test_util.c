@@ -1,4 +1,4 @@
-/* test_network - test utility module 
+/* test_network - test utility module
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -46,8 +46,8 @@ int main(int argc, char** argv)
         if (longlong != (((uint64_t)1) << 56))
         {
             printf(
-                "BYTE ORDER FAIL LE: %lx, %lx\n", 
-                longlong, 
+                "BYTE ORDER FAIL LE: %lx, %lx\n",
+                longlong,
                 (((uint64_t)1) << 63)
             );
             exit(1);
@@ -65,6 +65,6 @@ int main(int argc, char** argv)
             exit(1);
         }
     }
-    
+
     exit(0);
 }

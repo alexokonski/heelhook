@@ -1,4 +1,4 @@
-/* event - Event driven IO module.  Originally based on the 'ae' 
+/* event - Event driven IO module.  Originally based on the 'ae'
  * implementation found in redis: https://github.com/antirez/redis
  *
  * Copyright (c) 2013, Alex O'Konski
@@ -61,7 +61,7 @@ static event_platform_result event_platform_create(event_loop* loop)
         hhfree(state);
         return PLATFORM_RESULT_ERROR;
     }
-    
+
     loop->platform_data = state;
 
     return PLATFORM_RESULT_SUCCESS;
@@ -83,7 +83,7 @@ static event_platform_result event_platform_add(event_loop* loop, int fd,
     struct epoll_event epevent;
 
     /* mod if this fd is already monitored, otherwise it's new and we add */
-    int op = loop->io_events[fd].mask == EVENT_NONE ? 
+    int op = loop->io_events[fd].mask == EVENT_NONE ?
             EPOLL_CTL_ADD : EPOLL_CTL_MOD;
 
     memset(&epevent, 0, sizeof(epevent));
@@ -128,8 +128,8 @@ event_platform_result event_platform_poll(event_loop* loop, struct timeval *tv,
     platform_state* state = loop->platform_data;
 
     int num_ready = epoll_wait(
-        state->epollfd, 
-        state->epoll_events, 
+        state->epollfd,
+        state->epoll_events,
         loop->num_events,
         tv != NULL ? (tv->tv_sec*1000 + tv->tv_usec/1000) : -1
     );
@@ -142,10 +142,10 @@ event_platform_result event_platform_poll(event_loop* loop, struct timeval *tv,
     {
         int mask = 0;
         struct epoll_event* event = &state->epoll_events[i];
-        
+
         if (event->events & EPOLLIN) mask |= EVENT_READABLE;
         if (event->events & EPOLLOUT) mask |= EVENT_WRITEABLE;
-        
+
         /*
          * If an error occurs, inform the user on whatever events he's
          * listening to

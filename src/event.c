@@ -1,4 +1,4 @@
-/* event - Event driven IO module.  Originally based on the 'ae' 
+/* event - Event driven IO module.  Originally based on the 'ae'
  * implementation found in redis: https://github.com/antirez/redis
  *
  * Copyright (c) 2013, Alex O'Konski
@@ -36,7 +36,7 @@
 #include "platform.h"
 #include "hhmemory.h"
 
-typedef struct 
+typedef struct
 {
     int fd;
     int mask;
@@ -45,7 +45,7 @@ typedef struct
     event_io_callback* write_callback;
 } event_io;
 
-typedef struct 
+typedef struct
 {
     int fd;
     int mask;
@@ -78,7 +78,7 @@ event_loop* event_create_loop(int loop_size)
 {
     event_loop* loop = hhmalloc(sizeof(*loop));
     if (loop == NULL) goto create_error;
-    
+
     loop->io_events = hhmalloc(sizeof(*(loop->io_events)) * loop_size);
     loop->fired_events = hhmalloc(sizeof(*(loop->fired_events)) * loop_size);
 
@@ -133,13 +133,13 @@ event_result event_add_io_event(event_loop* loop, int fd, int mask,
 
     if (event_platform_add(loop, fd, mask) != PLATFORM_RESULT_SUCCESS)
     {
-        return EVENT_RESULT_PLATFORM_ERROR; 
+        return EVENT_RESULT_PLATFORM_ERROR;
     }
 
     event->fd = fd;
     event->mask |= mask;
     event->data = data;
-     
+
     if (mask & EVENT_READABLE) event->read_callback = callback;
     if (mask & EVENT_WRITEABLE) event->write_callback = callback;
 
@@ -203,24 +203,24 @@ static void event_process_all_events(event_loop* loop, int flags)
         int fired_mask = fired->mask;
 
         event_io* event = &loop->io_events[fd];
-        
-        /* 
+
+        /*
          * Make sure to also check the original mask, it might have
-         * been cleared by a call to event_delete_io_event while processing 
+         * been cleared by a call to event_delete_io_event while processing
          * a previous event.
          */
         int read_fired = 0;
         if (event->mask & (fired_mask & EVENT_READABLE))
         {
             read_fired = 1;
-            event->read_callback(loop, fd, event->data); 
+            event->read_callback(loop, fd, event->data);
         }
-        
+
         if (event->mask & (fired_mask & EVENT_WRITEABLE))
         {
             if (!read_fired || event->read_callback != event->write_callback)
             {
-                event->write_callback(loop, fd, event->data);                
+                event->write_callback(loop, fd, event->data);
             }
         }
     }

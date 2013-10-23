@@ -43,7 +43,7 @@
 #include <string.h>
 #include <unistd.h>
 
-const char* g_test_messages[] = 
+const char* g_test_messages[] =
 {
     "TEST_MESSAGE 1",
     "TEST 2",
@@ -97,7 +97,7 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
 
     if (g_messages_sent == NUM_TEST_MESSAGES)
     {
-        event_stop_loop(loop); 
+        event_stop_loop(loop);
     }
     /*printf("WROTE: %s\n", msg);*/
     event_delete_io_event(loop, fd, EVENT_WRITEABLE);
@@ -198,7 +198,7 @@ static void* event_thread(void* in)
     event_result r = event_add_io_event(
         loop,
         g_server_socket,
-        EVENT_READABLE, 
+        EVENT_READABLE,
         accept_callback,
         NULL
     );
@@ -228,10 +228,10 @@ int main(int argc, char** argv)
     }
 
     /* give thread time to set up */
-    sleep(1);    
+    sleep(1);
 
     int s = socket(AF_INET, SOCK_STREAM, 0);
-    
+
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -241,10 +241,10 @@ int main(int argc, char** argv)
     {
         error_exit(NULL);
     }
-  
+
     char buffer[1024];
     int n;
-    for (int i = 0; i < NUM_TEST_MESSAGES; i++) 
+    for (int i = 0; i < NUM_TEST_MESSAGES; i++)
     {
         const char* msg = g_test_messages[i];
         /*printf("SENDING: %s\n", msg);*/
@@ -253,7 +253,7 @@ int main(int argc, char** argv)
         {
             error_exit(NULL);
         }
-        
+
         n = read(s, buffer, sizeof(buffer));
         if (n == -1)
         {
@@ -261,7 +261,7 @@ int main(int argc, char** argv)
         }
 
         /*printf("GOT REPLY: %s\n", buffer);*/
-        if (strncmp(g_test_replies[i], buffer, 
+        if (strncmp(g_test_replies[i], buffer,
                     strsize(g_test_replies[i])) != 0)
         {
             printf("Messages don't match: %s, %s\n", buffer, g_test_replies[i]);

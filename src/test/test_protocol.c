@@ -1,4 +1,4 @@
-/* test_protocol - test protocol module 
+/* test_protocol - test protocol module
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -37,7 +37,7 @@
 
 static const char* TEST_REQUEST_LINE = "GET %s HTTP/1.1\r\n";
 static const char* RESOURCE_NAME = "/chat";
-static const struct 
+static const struct
 {
     const char* name;
     const char* send_value;
@@ -47,10 +47,10 @@ static const struct
     {"Host", "server.example.com", {"server.example.com", NULL}, 0},
     {"Upgrade", "websocket", {"websocket", NULL}, 0},
     {"Connection", "Upgrade", {"Upgrade", NULL}, 0},
-    {"Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==", 
+    {"Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==",
         {"dGhlIHNhbXBsZSBub25jZQ==", NULL}, 0},
     {"Origin", "http://example.com", {"http://example.com", NULL}, 0},
-    {"Sec-WebSocket-Protocol", "chat, superchat", 
+    {"Sec-WebSocket-Protocol", "chat, superchat",
         {"chat", "superchat", NULL}, 0},
     {"Sec-WebSocket-Version", "13", {"13", NULL},  0},
     {"Sec-WebSocket-Protocol", "otherchat", {"otherchat", NULL}, 2},
@@ -58,29 +58,29 @@ static const struct
 };
 const uint32_t NUM_UNIQUE_HEADERS = 7;
 static char TEST_BROKEN_REQUEST_LINE[] = "GET /thing HTTP/1.1";
-static char TEST_RESPONSE[] = 
+static char TEST_RESPONSE[] =
 "HTTP/1.1 101 Switching Protocols\r\n"
 "Upgrade: websocket\r\n"
 "Connection: Upgrade\r\n"
 "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
 "Sec-WebSocket-Protocol: chat\r\n\r\n";
 
-static const unsigned char TEST_CLIENT_FRAME[] = 
+static const unsigned char TEST_CLIENT_FRAME[] =
 {
-    0x81, 0x9c, 0xe7, 0x63, 0x33, 0x96, 0xb5, 0x0c, 0x50, 0xfd, 0xc7, 0x0a, 
-    0x47, 0xb6, 0x90, 0x0a, 0x47, 0xfe, 0xc7, 0x2b, 0x67, 0xdb, 0xab, 0x56, 
+    0x81, 0x9c, 0xe7, 0x63, 0x33, 0x96, 0xb5, 0x0c, 0x50, 0xfd, 0xc7, 0x0a,
+    0x47, 0xb6, 0x90, 0x0a, 0x47, 0xfe, 0xc7, 0x2b, 0x67, 0xdb, 0xab, 0x56,
     0x13, 0xc1, 0x82, 0x01, 0x60, 0xf9, 0x84, 0x08, 0x56, 0xe2
 };
 
 static const unsigned char TEST_CLIENT_FRAG_1[] =
 {
-    0x01, 0x89, 0x97, 0xa4, 0xcc, 0xb0, 0xf1, 0xd6, 0xad, 0xd7, 0xfa, 0xc1, 
-    0xa2, 0xc4, 0xa6    
+    0x01, 0x89, 0x97, 0xa4, 0xcc, 0xb0, 0xf1, 0xd6, 0xad, 0xd7, 0xfa, 0xc1,
+    0xa2, 0xc4, 0xa6
 };
 
 static const unsigned char TEST_CLIENT_FRAG_2[] =
 {
-    0x80, 0x89, 0x49, 0x82, 0x34, 0xd8, 0x2f, 0xf0, 0x55, 0xbf, 0x24, 0xe7, 
+    0x80, 0x89, 0x49, 0x82, 0x34, 0xd8, 0x2f, 0xf0, 0x55, 0xbf, 0x24, 0xe7,
     0x5a, 0xac, 0x7b
 };
 
@@ -104,8 +104,8 @@ int main(int argc, char** argv)
     int num_written = 0;
 
     num_written = snprintf(
-        &buffer[num_written], 
-        len - num_written, 
+        &buffer[num_written],
+        len - num_written,
         TEST_REQUEST_LINE,
         RESOURCE_NAME
     );
@@ -113,16 +113,16 @@ int main(int argc, char** argv)
     for(int i = 0; g_headers[i].name != NULL; i++)
     {
         num_written += snprintf(
-            &buffer[num_written], 
-            len - num_written, 
-            "%s: %s\r\n", 
+            &buffer[num_written],
+            len - num_written,
+            "%s: %s\r\n",
             g_headers[i].name,
             g_headers[i].send_value
         );
     }
 
     num_written += snprintf(&buffer[num_written], len - num_written, "\r\n");
-    
+
     protocol_settings settings;
     settings.write_max_frame_size = 1024;
     settings.read_max_msg_size = 65537;
@@ -131,7 +131,7 @@ int main(int argc, char** argv)
     darray_append(&conn->info.buffer, buffer, num_written);
     protocol_result r;
     protocol_handshake_result hr;
-    if ((hr=protocol_read_handshake(conn)) != 
+    if ((hr=protocol_read_handshake(conn)) !=
             PROTOCOL_HANDSHAKE_SUCCESS)
     {
         printf("FAIL, HANDSHAKE RETURN: %d\n", hr);
@@ -169,8 +169,8 @@ int main(int argc, char** argv)
             if (index >= protocol_get_num_header_values(conn, name))
             {
                 printf(
-                    "VALUE INDEX OUT OF BOUNDS: %s, %d, %d\n", 
-                    name, 
+                    "VALUE INDEX OUT OF BOUNDS: %s, %d, %d\n",
+                    name,
                     index,
                     protocol_get_num_header_values(conn, name)
                 );
@@ -187,8 +187,8 @@ int main(int argc, char** argv)
             if (strcmp(g_headers[i].values[j], value) != 0)
             {
                 printf(
-                    "VALUE DOESN'T MATCH: %s, %s\n", 
-                    g_headers[i].values[j], 
+                    "VALUE DOESN'T MATCH: %s, %s\n",
+                    g_headers[i].values[j],
                     value
                 );
                 exit(1);
@@ -196,7 +196,7 @@ int main(int argc, char** argv)
         }
     }
 
-    if ((hr = protocol_write_handshake(conn, "chat", NULL)) 
+    if ((hr = protocol_write_handshake(conn, "chat", NULL))
             != PROTOCOL_HANDSHAKE_SUCCESS)
     {
         printf("FAIL WRITING HANDSHAKE: %d\n", hr);
@@ -207,8 +207,8 @@ int main(int argc, char** argv)
     if (strlen(TEST_RESPONSE) != darray_get_len(conn->write_buffer))
     {
         printf(
-            "LENGTH MISMATCH %lu %lu\n%s\n%s\n", 
-            strlen(TEST_RESPONSE), 
+            "LENGTH MISMATCH %lu %lu\n%s\n%s\n",
+            strlen(TEST_RESPONSE),
             darray_get_len(conn->write_buffer),
             TEST_RESPONSE,
             write_buf
@@ -224,8 +224,8 @@ int main(int argc, char** argv)
 
     /* test reading a message now that the handshake worked */
     darray_append(
-        &conn->read_buffer, 
-        TEST_CLIENT_FRAME, 
+        &conn->read_buffer,
+        TEST_CLIENT_FRAME,
         sizeof(TEST_CLIENT_FRAME)
     );
 
@@ -250,7 +250,7 @@ int main(int argc, char** argv)
     if (msg.msg_len != expected_len)
     {
         printf(
-            "MESSAGE SHOULD BE LEN %d, GOT %" PRId64 "\n", 
+            "MESSAGE SHOULD BE LEN %d, GOT %" PRId64 "\n",
             expected_len,
             msg.msg_len
         );
@@ -268,8 +268,8 @@ int main(int argc, char** argv)
 
     darray_clear(conn->read_buffer);
     darray_append(
-        &conn->read_buffer, 
-        TEST_CLIENT_FRAG_1, 
+        &conn->read_buffer,
+        TEST_CLIENT_FRAG_1,
         sizeof(TEST_CLIENT_FRAG_1)
     );
     memset(&msg, 0, sizeof(msg));
@@ -308,8 +308,8 @@ int main(int argc, char** argv)
     if (msg.msg_len != expected_frag_len)
     {
         printf(
-            "FRAG LEN MISMATCH: %d %" PRId64 "\n", 
-            expected_frag_len, 
+            "FRAG LEN MISMATCH: %d %" PRId64 "\n",
+            expected_frag_len,
             msg.msg_len
         );
         exit(1);
@@ -325,8 +325,8 @@ int main(int argc, char** argv)
     }
 
     darray_clear(conn->read_buffer);
-    
-    const unsigned char header[] = 
+
+    const unsigned char header[] =
     {
         0x82, 0xff, /* fin bit, opcode, extended len */
         0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /* extended len */
@@ -353,7 +353,7 @@ int main(int argc, char** argv)
     memset(&msg, 0, sizeof(msg));
     pos = 0;
     r = protocol_read_msg(conn, &pos, &msg);
- 
+
     if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
         printf("NON-SUCCESS LONG MSG FRAG: %d\n", r);
@@ -379,7 +379,7 @@ int main(int argc, char** argv)
     }
 
     /*darray_clear(conn->write_buffer);*/
-    size_t before_len = darray_get_len(conn->write_buffer); 
+    size_t before_len = darray_get_len(conn->write_buffer);
     static char out_message[] = "Hello";
     settings.write_max_frame_size = 3;
     msg.type = PROTOCOL_MSG_TEXT;
@@ -394,13 +394,13 @@ int main(int argc, char** argv)
     }
 
     size_t new_len = darray_get_len(conn->write_buffer) - before_len;
-    size_t total_msg_len = sizeof(TEST_SERVER_FRAG_1) + 
+    size_t total_msg_len = sizeof(TEST_SERVER_FRAG_1) +
                         sizeof(TEST_SERVER_FRAG_2);
     if (new_len != total_msg_len)
     {
         printf(
-            "WRITE MSG LEN WRONG %lu %lu\n", 
-            total_msg_len, 
+            "WRITE MSG LEN WRONG %lu %lu\n",
+            total_msg_len,
             darray_get_len(conn->write_buffer)
         );
         exit(1);
@@ -416,8 +416,8 @@ int main(int argc, char** argv)
 
     if (
         memcmp(
-            &data[sizeof(TEST_SERVER_FRAG_1)], 
-            TEST_SERVER_FRAG_2, 
+            &data[sizeof(TEST_SERVER_FRAG_1)],
+            TEST_SERVER_FRAG_2,
             sizeof(TEST_SERVER_FRAG_2)
         ) != 0
     )
@@ -432,8 +432,8 @@ int main(int argc, char** argv)
     conn = protocol_create_conn(&settings, 256);
     darray_clear(conn->info.buffer);
     darray_append(
-        &conn->info.buffer, 
-        TEST_BROKEN_REQUEST_LINE, 
+        &conn->info.buffer,
+        TEST_BROKEN_REQUEST_LINE,
         sizeof(TEST_BROKEN_REQUEST_LINE)
     );
     if ((hr=protocol_read_handshake(conn)) == PROTOCOL_HANDSHAKE_SUCCESS)
@@ -443,6 +443,6 @@ int main(int argc, char** argv)
     }
 
     protocol_destroy_conn(conn);
-    
+
     exit(0);
 }

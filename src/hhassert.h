@@ -1,5 +1,5 @@
-/* hhassert - assert and exit the program 
- * 
+/* hhassert - assert and exit the program
+ *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
  *

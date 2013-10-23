@@ -1,4 +1,4 @@
-/* event - Event driven IO module.  Originally based on the 'ae' 
+/* event - Event driven IO module.  Originally based on the 'ae'
  * implementation found in redis: https://github.com/antirez/redis
  *
  * Copyright (c) 2013, Alex O'Konski
@@ -115,7 +115,7 @@ event_platform_result event_platform_poll(event_loop* loop, struct timeval *tv,
         {
             int mask = 0;
             struct pollfd* pfd = &state->poll_fds[i];
-            
+
             if (pfd->revents == 0) continue;
 
             if (pfd->revents & POLLIN) mask |= EVENT_READABLE;

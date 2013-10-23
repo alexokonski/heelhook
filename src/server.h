@@ -1,4 +1,4 @@
-/* server - handles client connections and sending/receiving data 
+/* server - handles client connections and sending/receiving data
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -45,17 +45,20 @@ typedef struct
     int64_t msg_len;
 } server_msg;
 
-typedef void (on_open)(server_conn* conn); 
-typedef void (on_message)(server_conn* conn, server_msg* msg);
-typedef void (on_ping)(
-    server_conn* conn_info, 
+/* return false if you want to reject this client */
+typedef BOOL (server_on_open)(server_conn* conn);
+typedef void (server_on_message)(server_conn* conn, server_msg* msg);
+typedef void (server_on_ping)(
+    server_conn* conn_info,
     char* payload,
     int64_t payload_len
 );
-typedef void (on_close)(
-    server_conn* conn_info, 
-    int code, 
-    char* reason, 
+
+/* includes the close code and reason received from the client (if any) */
+typedef void (server_on_close)(
+    server_conn* conn_info,
+    int code,
+    const char* reason,
     int64_t reason_len
 );
 
@@ -68,22 +71,22 @@ typedef enum
 typedef struct
 {
     /* called when a handshake has just been completed */
-    on_open* on_open_callback;
-    
-    /* called when a full message is received from a client */
-    on_message* on_message_callback;
+    server_on_open* on_open_callback;
 
-    /* 
-     * called when a ping was received.  a pong is always sent for you 
-     * automatically to conform to the RFC 
+    /* called when a full message is received from a client */
+    server_on_message* on_message_callback;
+
+    /*
+     * called when a ping was received.  a pong is always sent for you
+     * automatically to conform to the RFC
      */
-    on_ping* on_ping_callback;
+    server_on_ping* on_ping_callback;
 
     /* called when connection is about to terminate */
-    on_close* on_close_callback;
+    server_on_close* on_close_callback;
 } server_callbacks;
 
-/* 
+/*
  * create an instance of a 'server' options and callbacks must be valid
  * pointers until server_stop is called
  */
@@ -94,30 +97,41 @@ server_result server_conn_send_msg(server_conn* conn, server_msg* msg);
 
 /* send a ping with payload (NULL for no payload)*/
 server_result server_conn_send_ping(
-    server_conn* conn, 
-    char* payload, 
+    server_conn* conn,
+    char* payload,
     int64_t payload_len
 );
 
 /* send a pong with payload (NULL for no payload)*/
 server_result server_conn_send_pong(
-    server_conn* conn, 
-    char* payload, 
+    server_conn* conn,
+    char* payload,
     int64_t payload_len
 );
 
-/* 
- * close this connection. sends a close message with the error 
- * code and reason 
+/*
+ * close this connection. sends a close message with the error
+ * code and reason
  */
 server_result server_conn_close(
     server_conn* conn,
     uint16_t code,
-    const char* reason
+    const char* reason,
+    int reason_len
 );
 
-/* 
- * stop the server, close all connections. will cause server_listen 
+/*
+ * get number of subprotocols the client reported they support
+ */
+int server_get_num_client_subprotocols(server_conn* conn);
+
+/*
+ * get a subprotocol the client reported they support
+ */
+const char* server_get_client_subprotocol(server_conn* conn, int index);
+
+/*
+ * stop the server, close all connections. will cause server_listen
  * to return eventually
  */
 void server_stop(server* serv);

@@ -1,4 +1,4 @@
-/* event - Event driven IO module.  Originally based on the 'ae' 
+/* event - Event driven IO module.  Originally based on the 'ae'
  * implementation found in redis: https://github.com/antirez/redis
  *
  * Copyright (c) 2013, Alex O'Konski
