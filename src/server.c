@@ -284,7 +284,6 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
         if (total_written >= SERVER_MAX_WRITE_LENGTH) break;
     }
 
-
     if (num_written == -1)
     {
         server_log(
@@ -329,6 +328,17 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
             }
         }
     }
+
+    if (pconn->settings->read_max_msg_size > 0 &&
+        darray_get_len(pconn->write_buffer) >
+        (uint64_t)pconn->settings->read_max_msg_size)
+    {
+        /*
+         * don't let the write buffer get above the max the read buffer len
+         */
+        darray_slice(pconn->write_buffer, conn->write_pos, -1);
+        conn->write_pos = 0;
+    }
 }
 
 static void parse_client_messages(server_conn* conn)
@@ -341,7 +351,6 @@ static void parse_client_messages(server_conn* conn)
         r = protocol_read_msg(&conn->pconn, &conn->read_pos, &msg);
 
         BOOL is_text = FALSE;
-        BOOL should_close = conn->pconn.should_close;
         switch (r)
         {
         case PROTOCOL_RESULT_MESSAGE_FINISHED:
@@ -353,18 +362,15 @@ static void parse_client_messages(server_conn* conn)
             case PROTOCOL_MSG_TEXT:
                 is_text = TRUE; /* fallthru */
             case PROTOCOL_MSG_BINARY:
-                if (!should_close)
+                smsg.data = msg.data;
+                smsg.msg_len = msg.msg_len;
+                smsg.is_text = is_text;
+                if (conn->serv->callbacks.on_message_callback != NULL)
                 {
-                    smsg.data = msg.data;
-                    smsg.msg_len = msg.msg_len;
-                    smsg.is_text = is_text;
-                    if (conn->serv->callbacks.on_message_callback != NULL)
-                    {
-                        conn->serv->callbacks.on_message_callback(
-                            conn,
-                            &smsg
-                        );
-                    }
+                    conn->serv->callbacks.on_message_callback(
+                        conn,
+                        &smsg
+                    );
                 }
                 break;
             case PROTOCOL_MSG_CLOSE:
@@ -393,19 +399,16 @@ static void parse_client_messages(server_conn* conn)
                 }
                 break;
             case PROTOCOL_MSG_PING:
-                if (!should_close)
+                if (conn->serv->callbacks.on_ping_callback != NULL)
                 {
-                    if (conn->serv->callbacks.on_ping_callback != NULL)
-                    {
-                        conn->serv->callbacks.on_ping_callback(
-                            conn,
-                            msg.data,
-                            msg.msg_len
-                        );
-                    }
-                    msg.type = PROTOCOL_MSG_PONG;
-                    server_conn_send_pmsg(conn, &msg);
+                    conn->serv->callbacks.on_ping_callback(
+                        conn,
+                        msg.data,
+                        msg.msg_len
+                    );
                 }
+                msg.type = PROTOCOL_MSG_PONG;
+                server_conn_send_pmsg(conn, &msg);
                 break;
             case PROTOCOL_MSG_PONG:
                 break;
@@ -416,23 +419,19 @@ static void parse_client_messages(server_conn* conn)
             /* we're still reading this message */
             break;
         case PROTOCOL_RESULT_FAIL:
-            /* this result code means kill the connection outright */
-            /* deactivate_conn(conn); */
+            if (!conn->close_send_pending)
+            {
+                conn->should_fail = TRUE;
+                server_conn_close(
+                    conn,
+                    conn->pconn.error_code,
+                    conn->pconn.error_msg,
+                    conn->pconn.error_len
+                );
+                return;
+            }
             break;
         }
-
-        if (should_close && !conn->close_send_pending)
-        {
-            conn->should_fail = TRUE;
-            server_conn_close(
-                conn,
-                conn->pconn.error_code,
-                conn->pconn.error_msg,
-                conn->pconn.error_len
-            );
-            return;
-        }
-
     } while (r != PROTOCOL_RESULT_CONTINUE &&
              conn->read_pos < darray_get_len(conn->pconn.read_buffer));
 
@@ -903,6 +902,7 @@ server_result server_listen(server* serv)
         );
         return SERVER_RESULT_FAIL;
     }
+    serv->fd = s;
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -963,6 +963,14 @@ server_result server_listen(server* serv)
     }
 
     event_pump_events(serv->loop, 0);
+
+    /* take the server out of the event loop */
+    event_delete_io_event(
+        serv->loop,
+        s,
+        EVENT_READABLE | EVENT_WRITEABLE
+    );
+
     return SERVER_RESULT_SUCCESS;
 }
 

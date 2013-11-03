@@ -407,9 +407,6 @@ static void handle_violation(
     const char* msg
 )
 {
-    if (conn->should_close) return;
-
-    conn->should_close = TRUE;
     conn->error_code = code;
     conn->error_msg = msg;
     conn->error_len = strlen(msg); /* terminator left out on purpose */
@@ -667,7 +664,6 @@ int protocol_init_conn(
     conn->frame_hdr.payload_len = -1;
     conn->valid_state.state = 0;
     conn->valid_state.codepoint = 0;
-    conn->should_close = FALSE;
     conn->error_msg = NULL;
     conn->error_code = 0;
     conn->error_len = 0;
@@ -716,7 +712,6 @@ void protocol_reset_conn(protocol_conn* conn)
     conn->frame_hdr.payload_len = -1;
     conn->valid_state.state = 0;
     conn->valid_state.codepoint = 0;
-    conn->should_close = FALSE;
     conn->error_msg = NULL;
     conn->error_code = 0;
     conn->error_len = 0;

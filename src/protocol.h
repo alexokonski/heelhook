@@ -193,19 +193,16 @@ typedef struct
     /* info about this connection from handshake */
     protocol_handshake info;
 
-    /* whether or not this connection should be closed */
-    BOOL should_close;
-
     /*
-     * if should_close is true, contains a message to send to clients
-     * upon closing
+     * if protocol_read_msg returns PROTOCOL_RESULT_FAIL, 
+     * contains a message to send to clients upon closing
      */
     const char* error_msg;
     int error_len;
 
     /*
-     * if should_close is TRUE, contains the error code to send to
-     * clients upon closing
+     * if protocol_read_msg returns PROTOCOL_RESULT_FAIL, 
+     * contains the error code to send to clients upon closing
      */
     uint16_t error_code;
 } protocol_conn;
