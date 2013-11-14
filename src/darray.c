@@ -185,12 +185,19 @@ void darray_append(darray** array, const void* data, int num_elems)
     arr->len += num_elems;
 }
 
+/* get element by index */
+void* darray_get_elem(darray* array, int index)
+{
+    hhassert(index >= 0);
+    hhassert(array->len > 0);
+    if (index < 0 || array->len <= 0) return NULL;
+
+    return (array->data + (array->elem_size * index));
+}
+
 /* return the last element of the darray */
 void* darray_get_last(darray* array)
 {
-    hhassert(array->len > 0);
-    if (array->len <= 0) return NULL;
-
-    return (array->data + (array->elem_size * (array->len - 1)));
+    return darray_get_elem(array, array->len - 1);
 }
 

@@ -92,6 +92,9 @@ void darray_add_len(darray* array, int num_elems);
  */
 void darray_append(darray** array, const void* data, int num_elems);
 
+/* get element by index */
+void* darray_get_elem(darray* array, int index);
+
 /* return the last element of the darray */
 void* darray_get_last(darray* array);
 
