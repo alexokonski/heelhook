@@ -83,6 +83,19 @@ static void test_data(
     EXIT_IF_FAIL(result == 0, test, file, line);
 }
 
+static void test_get_last(
+    darray* array,
+    void* data,
+    size_t data_len,
+    const char* test,
+    const char* file,
+    int line
+)
+{
+    int result = memcmp(darray_get_last(array), data, data_len);
+    EXIT_IF_FAIL(result == 0, test, file, line);
+}
+
 int main(void)
 {
     #define END_ARGS cur_test, __FILE__, __LINE__
@@ -136,7 +149,12 @@ int main(void)
     test_data(array, arr_both, arr_both_size * sizeof(int), END_ARGS);
     test_len(array, arr_both_size, END_ARGS);
     test_size_reserved(array, 12, END_ARGS);
-    darray_destroy(array);
 
+    /* test get_last */
+    cur_test = "get_last";
+    int x = arr_both[arr_both_size - 1];
+    test_get_last(array, (void*)&x, sizeof(x), END_ARGS);
+
+    darray_destroy(array);
     exit(0);
 }
