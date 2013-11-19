@@ -122,8 +122,11 @@ static event_platform_result event_platform_remove(event_loop* loop, int fd,
     return PLATFORM_RESULT_SUCCESS;
 }
 
-event_platform_result event_platform_poll(event_loop* loop, struct timeval *tv,
-                                          int* num_fired)
+event_platform_result event_platform_poll(
+    event_loop* loop,
+    int timeout_msecs,
+    int* num_fired
+)
 {
     platform_state* state = loop->platform_data;
 
@@ -131,7 +134,7 @@ event_platform_result event_platform_poll(event_loop* loop, struct timeval *tv,
         state->epollfd,
         state->epoll_events,
         loop->num_events,
-        tv != NULL ? (tv->tv_sec*1000 + tv->tv_usec/1000) : -1
+        timeout_msecs
     );
 
     (*num_fired) = num_ready;

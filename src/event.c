@@ -33,8 +33,9 @@
 #include <unistd.h>
 
 #include "event.h"
-#include "platform.h"
 #include "hhmemory.h"
+#include "platform.h"
+#include "pqueue.h"
 
 typedef struct
 {
@@ -44,6 +45,17 @@ typedef struct
     event_io_callback* read_callback;
     event_io_callback* write_callback;
 } event_io;
+
+struct event_time
+{
+    void* data;
+    event_time_callback* callback;
+    pqueue_elem_ref pqueue_ref;
+    uint64_t frequency_ms;
+    uint64_t next_fire_time_ms;
+};
+
+typedef struct event_time event_time;
 
 typedef struct
 {
@@ -58,6 +70,8 @@ struct event_loop
     int num_events; /* max size of io_events and fired_events */
     int max_fd; /* max fd in io_events; current size of io_events */
     void* platform_data; /* platform-specific polling API data */
+    event_time_id id_counter;
+    pqueue* time_events;
     int stop;
 };
 
@@ -68,26 +82,56 @@ typedef enum
     PLATFORM_RESULT_ERROR
 } event_platform_result;
 
+static int time_event_cmp(pqueue_value a, pqueue_value b);
+
+static pqueue_spec event_pqueue_spec =
+{
+   .sort = PQUEUE_SORT_MIN,
+   .cmp = time_event_cmp
+};
+
 #ifdef HAVE_EPOLL
     #include "event_epoll.c"
 #else
     #include "event_poll.c"
 #endif
 
-event_loop* event_create_loop(int loop_size)
+static int time_event_cmp(pqueue_value a, pqueue_value b)
+{
+    event_time* t1 = (event_time*)a.p_val;
+    event_time* t2 = (event_time*)b.p_val;
+
+    if (t1->next_fire_time_ms < t2->next_fire_time_ms)
+    {
+        return -1;
+    }
+    else if(t1->next_fire_time_ms > t2->next_fire_time_ms)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+event_loop* event_create_loop(int max_io_events)
 {
     event_loop* loop = hhmalloc(sizeof(*loop));
     if (loop == NULL) goto create_error;
 
-    loop->io_events = hhmalloc(sizeof(*(loop->io_events)) * loop_size);
-    loop->fired_events = hhmalloc(sizeof(*(loop->fired_events)) * loop_size);
+    loop->io_events = hhmalloc(sizeof(*(loop->io_events)) * max_io_events);
+    loop->fired_events =
+        hhmalloc(sizeof(*(loop->fired_events)) * max_io_events);
 
     if (loop->io_events == NULL || loop->fired_events == NULL)
     {
         goto create_error;
     }
 
-    loop->num_events = loop_size;
+    loop->time_events = pqueue_create(&event_pqueue_spec);
+
+    loop->num_events = max_io_events;
     loop->max_fd = -1;
     loop->stop = 0;
 
@@ -171,31 +215,132 @@ void event_delete_io_event(event_loop* loop, int fd, int mask)
     event_platform_remove(loop, fd, mask);
 }
 
+static uint64_t event_get_now_ms(void)
+{
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    return now.tv_sec * 1000 + now.tv_usec / 1000;
+}
+
+event_time_id event_add_time_event(
+    event_loop* loop,
+    event_time_callback* callback,
+    uint64_t frequency_ms,
+    void* data
+)
+{
+    /* initialize the new time event */
+    event_time* et = hhmalloc(sizeof(*et));
+    if (et == NULL)
+    {
+        return EVENT_INVALID_TIME_ID;
+    }
+
+    et->data = data;
+    et->callback = callback;
+    et->frequency_ms = frequency_ms;
+    et->next_fire_time_ms = event_get_now_ms() + frequency_ms;
+
+    /* now put it in the priority queue */
+    pqueue_value val;
+    val.p_val = et;
+    et->pqueue_ref = pqueue_insert(loop->time_events, val);
+
+    return et;
+}
+
+void event_delete_time_event(event_loop* loop, event_time_id id)
+{
+    event_time* et = id;
+
+    /* remove from priority queue */
+    pqueue_delete(loop->time_events, et->pqueue_ref);
+
+    hhfree(et);
+}
+
 void event_destroy_loop(event_loop* loop)
 {
     event_platform_destroy(loop);
     hhfree(loop->io_events);
     hhfree(loop->fired_events);
+
+    /* destroy all time events */
+    pqueue* q = loop->time_events;
+    pqueue_iterator it;
+    for (pqueue_iter_begin(q, &it);
+         pqueue_iter_is_valid(q, &it);
+         pqueue_iter_next(q, &it))
+    {
+        /* free event */
+        event_time* et = pqueue_iter_get_value(&it).p_val;
+        hhfree(et);
+    }
+
+    /* destroy pqueue object */
+    pqueue_destroy(q);
+
     hhfree(loop);
 }
 
 static void event_process_all_events(event_loop* loop, int flags)
 {
-    struct timeval tv, *tv_ptr = NULL;
+    int time_ms;
+    uint64_t now;
+    event_time* et;
+
     if (flags & EVENT_DONT_BLOCK)
     {
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
-        tv_ptr = &tv;
+        /* blocking for 0 means don't block */
+        time_ms = 0;
+    }
+    else if (pqueue_get_size(loop->time_events) > 0)
+    {
+        et = pqueue_peek(loop->time_events).p_val;
+        now = event_get_now_ms();
+        time_ms = et->next_fire_time_ms - now;
+
+        /* don't block if somehow we went back to the future */
+        if (time_ms < 0) time_ms = 0;
+    }
+    else
+    {
+        /*
+         * no time events and no EVENT_DONT_BLOCK flag, block until an
+         * io event
+         */
+        time_ms = -1;
     }
 
     int num_fired;
-    if (event_platform_poll(loop, tv_ptr, &num_fired)
+    if (event_platform_poll(loop, time_ms, &num_fired)
                                             != PLATFORM_RESULT_SUCCESS)
     {
         return;
     }
 
+    /* fire time events */
+    if (pqueue_get_size(loop->time_events))
+    {
+        now = event_get_now_ms();
+        et = pqueue_peek(loop->time_events).p_val;
+        while (now >= et->next_fire_time_ms)
+        {
+            /* get ready to fire the next event */
+            et = pqueue_pop(loop->time_events).p_val;
+
+            /* fire it  */
+            et->callback(loop, et, et->data);
+            pqueue_value val;
+            val.p_val = et;
+
+            /* put it back in for next time */
+            et->next_fire_time_ms = now + et->frequency_ms;
+            et->pqueue_ref = pqueue_insert(loop->time_events, val);
+        }
+    }
+
+    /* now fire io events */
     for (int i = 0; i < num_fired; i++)
     {
         event_fired* fired = &loop->fired_events[i];

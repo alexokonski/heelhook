@@ -40,6 +40,9 @@
 /* flags for event_pump_events */
 #define EVENT_DONT_BLOCK 1
 
+#include "util.h"
+#include <stdint.h>
+
 typedef enum
 {
     EVENT_RESULT_SUCCESS,
@@ -49,14 +52,26 @@ typedef enum
 } event_result;
 
 typedef struct event_loop event_loop;
+typedef struct event_time* event_time_id;
+#define EVENT_INVALID_TIME_ID (NULL)
 
-typedef void (event_io_callback)(struct event_loop* loop, int fd, void* data);
+typedef void (event_io_callback)(event_loop* loop, int fd, void* data);
+typedef void (event_time_callback)(
+    event_loop* loop,
+    event_time_id id,
+    void* data
+);
 
-event_loop*     event_create_loop(int loop_size);
+event_loop*     event_create_loop(int max_io_events);
 void            event_stop_loop(event_loop* loop);
 event_result    event_add_io_event(event_loop* loop, int fd, int mask,
                                    event_io_callback* callback, void* data);
 void            event_delete_io_event(event_loop* loop, int fd, int mask);
+event_time_id   event_add_time_event(event_loop* loop,
+                                     event_time_callback* callback,
+                                     uint64_t frequency_ms,
+                                     void* data);
+void            event_delete_time_event(event_loop* loop, event_time_id id);
 void            event_destroy_loop(event_loop* loop);
 
 /* This function blocks until an event calls event_stop_loop */

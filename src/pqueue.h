@@ -109,7 +109,7 @@ pqueue_value pqueue_peek(pqueue* q);
 pqueue_value pqueue_pop(pqueue* q);
 
 /*
- * delete an element from the pqueue. returns -1 if element wasn't found.
+ * delete an element from the pqueue.
  */
 void pqueue_delete(pqueue* q, pqueue_elem_ref ref);
 

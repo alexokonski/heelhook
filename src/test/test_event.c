@@ -36,8 +36,10 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +65,20 @@ static int g_messages_received = 0;
 static int g_messages_sent = 0;
 static int g_server_socket = -1;
 
+typedef struct
+{
+    uint64_t freq_ms;
+    uint64_t last_fire_time_ms;
+} time_event_state;
+
+static time_event_state TIME_EVENT_STATES[] =
+{
+    {10, 0},
+    {15, 0},
+    {11, 0},
+    {55, 0}
+};
+
 static void error_exit(const char* error)
 {
     if (error != NULL)
@@ -80,6 +96,52 @@ static int strsize(const char* string)
 {
     return strlen(string) + 1;
 }
+
+static uint64_t get_now_ms(void)
+{
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    return now.tv_sec * 1000 + now.tv_usec / 1000;
+}
+
+static void time_callback(
+    event_loop* loop,
+    event_time_id id,
+    void* data
+)
+{
+    hhunused(loop);
+    hhunused(id);
+
+    time_event_state* state = data;
+    uint64_t last_fire_time_ms = state->last_fire_time_ms;
+
+    if (last_fire_time_ms == 0)
+    {
+        state->last_fire_time_ms = get_now_ms();
+    }
+    else
+    {
+        uint64_t now = get_now_ms();
+        state->last_fire_time_ms = now;
+        int64_t elapsed = now - last_fire_time_ms;
+        int64_t expected_elapsed = state->freq_ms;
+        const int64_t epsilon = 4;
+        if (llabs(elapsed - expected_elapsed) > epsilon)
+        {
+            printf("EXPECTED ELAPSED TO BE WITHIN %" PRIi64 " OF %" PRIi64
+                   " INSTEAD WAS %" PRIi64 "\n",
+                   epsilon, expected_elapsed, elapsed);
+            error_exit("TIME EVENT ERROR");
+        }
+        else
+        {
+            /*printf("FREQ %" PRIu64 " FIRED IN %lli EPSILON\n",
+                   state->freq_ms, llabs(elapsed - expected_elapsed));*/
+        }
+    }
+}
+
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data)
 {
@@ -167,6 +229,7 @@ static void accept_callback(event_loop* loop, int fd, void* data)
     }
 }
 
+
 static void* event_thread(void* in)
 {
     hhunused(in);
@@ -206,6 +269,16 @@ static void* event_thread(void* in)
     if (r != EVENT_RESULT_SUCCESS)
     {
         error_exit("NON-SUCCESS WHEN ADDING accept_callback");
+    }
+
+    for (unsigned int i = 0; i < hhcountof(TIME_EVENT_STATES); i++)
+    {
+        event_add_time_event(
+            loop,
+            time_callback,
+            TIME_EVENT_STATES[i].freq_ms,
+            &TIME_EVENT_STATES[i]
+        );
     }
 
     event_pump_events(loop, 0);
@@ -268,6 +341,9 @@ int main(int argc, char** argv)
             error_exit("REPLY DIDN'T MATCH");
         }
     }
+
+    /* sleep for some msecs so the time events can be tested */
+    usleep(8000 * 1000);
 
     pthread_join(thread, NULL);
 

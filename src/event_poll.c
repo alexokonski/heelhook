@@ -92,14 +92,12 @@ static event_platform_result event_platform_remove(event_loop* loop, int fd,
     return PLATFORM_RESULT_SUCCESS;
 }
 
-event_platform_result event_platform_poll(event_loop* loop, struct timeval *tv,
+event_platform_result event_platform_poll(event_loop* loop, int timeout_msecs,
                                           int* num_fired)
 {
     platform_state* state = loop->platform_data;
 
-    int timeout = tv != NULL ? (tv->tv_sec*1000 + tv->tv_usec/1000) : -1;
-
-    int nfired = poll(state->poll_fds, loop->max_fd + 1, timeout);
+    int nfired = poll(state->poll_fds, loop->max_fd + 1, timeout_msecs);
 
     (*num_fired) = nfired;
 

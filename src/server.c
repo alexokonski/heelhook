@@ -35,7 +35,6 @@
 #include "hhmemory.h"
 #include "protocol.h"
 #include "server.h"
-#include "util.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
