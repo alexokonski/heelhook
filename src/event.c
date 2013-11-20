@@ -320,23 +320,50 @@ static void event_process_all_events(event_loop* loop, int flags)
     }
 
     /* fire time events */
-    if (pqueue_get_size(loop->time_events))
+    if (pqueue_get_size(loop->time_events) > 0)
     {
         now = event_get_now_ms();
         et = pqueue_peek(loop->time_events).p_val;
         while (now >= et->next_fire_time_ms)
         {
-            /* get ready to fire the next event */
-            et = pqueue_pop(loop->time_events).p_val;
-
-            /* fire it  */
+            /* fire this event  */
             et->callback(loop, et, et->data);
-            pqueue_value val;
-            val.p_val = et;
 
-            /* put it back in for next time */
-            et->next_fire_time_ms = now + et->frequency_ms;
-            et->pqueue_ref = pqueue_insert(loop->time_events, val);
+            /*
+             * callback() could have removed this event from
+             * the pqueue...
+             */
+            if (pqueue_get_size(loop->time_events) == 0)
+            {
+                /*
+                 * if it did, and et was the last event in the pqueue,
+                 * we're done
+                 */
+                break;
+            }
+            else if (pqueue_peek(loop->time_events).p_val == et)
+            {
+                /*
+                 * callback() did NOT remove this event from the pqueue...
+                 */
+                pqueue_value val;
+                val.p_val = et;
+
+                /* take it out and put it back in for next time */
+                pqueue_pop(loop->time_events);
+                et->next_fire_time_ms = now + et->frequency_ms;
+                et->pqueue_ref = pqueue_insert(loop->time_events, val);
+            }
+            else
+            {
+                /*
+                 * callback() DID remove et from the pqueue, AND there are
+                 * events left to process.  Nothing to do here...
+                 */
+            }
+
+            /* next event */
+            et = pqueue_peek(loop->time_events).p_val;
         }
     }
 
