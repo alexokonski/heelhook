@@ -343,7 +343,7 @@ int main(int argc, char** argv)
     }
 
     /* sleep for some msecs so the time events can be tested */
-    usleep(8000 * 1000);
+    usleep(800 * 1000);
 
     pthread_join(thread, NULL);
 

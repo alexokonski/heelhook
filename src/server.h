@@ -132,11 +132,13 @@ const char* server_get_client_subprotocol(server_conn* conn, int index);
 
 /*
  * stop the server, close all connections. will cause server_listen
- * to return eventually
+ * to return eventually. safe to call from a signal handler
  */
 void server_stop(server* serv);
 
-/* blocks indefinitely listening to connections from clients */
+/*
+ * blocks indefinitely listening to connections from clients
+ */
 server_result server_listen(server* serv);
 
 #endif /* __SERVER_H_ */

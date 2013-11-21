@@ -51,6 +51,7 @@
 #define SERVER_HEADER_READ_LENGTH (1024 * 2)
 #define SERVER_MAX_WRITE_LENGTH (1024 * 64)
 #define SERVER_LISTEN_BACKLOG 512
+#define SERVER_WATCHDOG_FREQ_MS 5
 
 struct server_conn
 {
@@ -69,7 +70,8 @@ struct server_conn
 
 struct server
 {
-    int stopping;
+    BOOL stopping;
+    event_time_id watchdog_id;
     int fd;
     server_conn* connections;
     server_conn* active_head;
@@ -239,13 +241,20 @@ static void deactivate_conn(server_conn* conn)
     /* close the socket */
     close(conn->fd);
 
-    /*protocol_deinit_conn(&conn->pconn);*/
-
     /* take this client out of the active list */
     INLIST_REMOVE(serv, conn, next, prev, active_head, active_tail);
 
     /* put it on the end of the free list */
     INLIST_APPEND(serv, conn, next, prev, free_head, free_tail);
+
+    /*
+     * if we're stopping, and we were the last connection, tear down the
+     * event loop
+     */
+    if (serv->stopping && serv->active_head == NULL)
+    {
+        event_destroy_loop(serv->loop);
+    }
 }
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data)
@@ -670,7 +679,7 @@ server* server_create(config_options* options, server_callbacks* callbacks)
     server* serv = hhmalloc(sizeof(*serv));
     if (serv == NULL) return NULL;
 
-    serv->stopping = 0;
+    serv->stopping = FALSE;
     serv->active_head = NULL;
     serv->active_tail = NULL;
     serv->free_head = NULL;
@@ -759,6 +768,58 @@ static server_result server_conn_send_pmsg(
     }
 
     return SERVER_RESULT_SUCCESS;
+}
+
+static void server_teardown(server* serv)
+{
+    /* stop listening for new connections */
+    event_delete_io_event(
+        serv->loop,
+        serv->fd,
+        EVENT_READABLE | EVENT_WRITEABLE
+    );
+
+    /* close the socket */
+    close(serv->fd);
+
+    /*
+     * if we don't currently have any client connections, we're pretty
+     * much done
+     */
+    if (serv->active_head == NULL)
+    {
+        event_stop_loop(serv->loop);
+        return;
+    }
+
+    /* close each connection */
+    INLIST_FOREACH(
+        serv,
+        server_conn,
+        conn,
+        next,
+        prev,
+        active_head,
+        active_tail
+    )
+    {
+        const char msg[] = "server shutting down";
+        server_conn_close(conn, HH_ERROR_GOING_AWAY, msg, sizeof(msg)-1);
+    }
+}
+
+/* check if we've been asked to stop, and stop */
+static void stop_watchdog(event_loop* loop, event_time_id id, void* data)
+{
+    server* serv = data;
+    if (serv->stopping)
+    {
+        /* we aren't needed any more */
+        event_delete_time_event(loop, id);
+
+        /* tear down everything else */
+        server_teardown(serv);
+    }
 }
 
 /* queue up a message to send on this connection */
@@ -860,32 +921,25 @@ int server_get_num_client_subprotocols(server_conn* conn)
 }
 
 /*
- * stop the server, close all connections. will cause server_listen
- * to return eventually
+ * get a subprotocol the client reported they support
  */
 const char* server_get_client_subprotocol(server_conn* conn, int index)
 {
     return protocol_get_subprotocol(&conn->pconn, index);
 }
 
+/*
+ * stop the server, close all connections. will cause server_listen
+ * to return eventually. safe to call from a signal handler
+ */
 void server_stop(server* serv)
 {
-    INLIST_FOREACH(
-        serv,
-        server_conn,
-        conn,
-        next,
-        prev,
-        active_head,
-        active_tail
-    )
-    {
-        const char msg[] = "server shutting down";
-        server_conn_close(conn, HH_ERROR_GOING_AWAY, msg, sizeof(msg)-1);
-    }
-    serv->stopping = 1;
+    serv->stopping = TRUE;
 }
 
+/*
+ * blocks indefinitely listening to connections from clients
+ */
 server_result server_listen(server* serv)
 {
     config_options* opt = &serv->options;
@@ -961,14 +1015,19 @@ server_result server_listen(server* serv)
         return SERVER_RESULT_FAIL;
     }
 
-    event_pump_events(serv->loop, 0);
-
-    /* take the server out of the event loop */
-    event_delete_io_event(
+    /*
+     * add watchdog so we know when we're being asked to shut down
+     * the server
+     */
+    serv->watchdog_id = event_add_time_event(
         serv->loop,
-        s,
-        EVENT_READABLE | EVENT_WRITEABLE
+        stop_watchdog,
+        SERVER_WATCHDOG_FREQ_MS,
+        serv
     );
+
+    /* block and process all connections */
+    event_pump_events(serv->loop, 0);
 
     return SERVER_RESULT_SUCCESS;
 }

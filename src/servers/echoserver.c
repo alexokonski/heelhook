@@ -2,18 +2,14 @@
 #include "../util.h"
 
 #include <inttypes.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+static server* g_serv = NULL;
+
 static void on_message_received(server_conn* conn, server_msg* msg)
 {
-    /*printf(
-        "Got message: %.*s\nsize: %" PRId64 ", is_text: %d\n",
-        (int)msg->msg_len,
-        msg->data,
-        msg->msg_len,
-        msg->is_text
-    );*/
     server_conn_send_msg(conn, msg);
 }
 
@@ -41,6 +37,13 @@ static void on_close(
     printf("Got close: (%d, %.*s)\n", code, (int)reason_len, reason);
 }
 
+static void signal_handler(int sig)
+{
+    hhunused(sig);
+    /* signal server to stop */
+    server_stop(g_serv);
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 2)
@@ -48,6 +51,14 @@ int main(int argc, char** argv)
         fprintf(stderr, "usage: %s port\n", argv[0]);
         exit(1);
     }
+
+    struct sigaction act;
+
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    act.sa_handler = signal_handler;
+    sigaction(SIGTERM, &act, NULL);
+    sigaction(SIGINT, &act, NULL);
 
     config_options options;
     options.bindaddr = NULL;
@@ -67,9 +78,9 @@ int main(int argc, char** argv)
     callbacks.on_ping_callback = NULL;
     callbacks.on_close_callback = on_close;
 
-    server* serv = server_create(&options, &callbacks);
+    g_serv = server_create(&options, &callbacks);
 
-    server_listen(serv);
+    server_listen(g_serv);
 
     exit(0);
 }
