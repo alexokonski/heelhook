@@ -137,14 +137,13 @@ void pqueue_delete(pqueue* q, pqueue_elem_ref ref);
 
 /*
  * Iterator interface - get first value.  Will be in order inserted from
- * first to last. Returns NULL if queue is empty, otherwise the data for
- * that element
+ * first to last.
  */
 void pqueue_iter_begin(pqueue* q, pqueue_iterator* it);
 
 /*
- * Iterator interface - get the next value.  Will return NULL when done,
- * otherwise the data for that element
+ * Iterator interface - get the next value. Check with pqueue_iter_is_valid
+ * before using
  */
 void pqueue_iter_next(pqueue* q, pqueue_iterator* it);
 

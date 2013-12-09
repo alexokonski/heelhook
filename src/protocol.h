@@ -160,8 +160,11 @@ typedef struct
     BOOL fail_by_drop;
 } protocol_settings;
 
+typedef struct protocol_conn protocol_conn;
+typedef uint32_t (random_func)(struct protocol_conn* conn);
+
 /* represents the buffers/info for a websocket connection */
-typedef struct
+struct protocol_conn
 {
     /* settings for this connection */
     protocol_settings* settings;
@@ -169,13 +172,13 @@ typedef struct
     /* current state of this connection */
     protocol_state state;
 
-    /* char* buffer used for reading from a client */
+    /* char* buffer used for reading from an endpoint */
     darray* read_buffer;
 
-    /* char* buffer used for writing to a client */
+    /* char* buffer used for writing to a endpoint */
     darray* write_buffer;
 
-    /* fragmented msg we're currently reading from a client */
+    /* fragmented msg we're currently reading from a endpoint */
     protocol_offset_msg frag_msg;
 
     /* current msg frame we're reading */
@@ -195,17 +198,27 @@ typedef struct
 
     /*
      * if protocol_read_msg returns PROTOCOL_RESULT_FAIL, 
-     * contains a message to send to clients upon closing
+     * contains a message to send to endpoint upon closing
      */
     const char* error_msg;
     int error_len;
 
     /*
      * if protocol_read_msg returns PROTOCOL_RESULT_FAIL, 
-     * contains the error code to send to clients upon closing
+     * contains the error code to send to endpoints upon closing
      */
     uint16_t error_code;
-} protocol_conn;
+
+    /*
+     * random number generator for creating client frames
+     */
+    random_func* rand_func;
+
+    /*
+     * arbitrary data to associate with this object
+     */
+    void* userdata;
+};
 
 /*
  * create a protocol_conn on the heap, init buffers to init_buf_len bytes
@@ -213,7 +226,9 @@ typedef struct
  */
 protocol_conn* protocol_create_conn(
     protocol_settings* settings,
-    size_t init_buf_len
+    size_t init_buf_len,
+    random_func* rand_func,
+    void* userdata
 );
 
 /*
@@ -223,7 +238,9 @@ protocol_conn* protocol_create_conn(
 int protocol_init_conn(
     protocol_conn* conn,
     protocol_settings* settings,
-    size_t init_buf_len
+    size_t init_buf_len,
+    random_func* rand_func,
+    void* userdata
 );
 
 /*
@@ -242,20 +259,46 @@ void protocol_deinit_conn(protocol_conn* conn);
 void protocol_reset_conn(protocol_conn* conn);
 
 /*
- * parse the handshake from conn->info.buffer. On success, advances state from
+ * parse the handshake from the client from conn->info.buffer. On success, 
+ * advances state from
  * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_WRITE_HANDSHAKE
  */
-protocol_handshake_result protocol_read_handshake(protocol_conn* conn);
+protocol_handshake_result protocol_read_handshake_request(
+    protocol_conn* conn
+);
 
 /*
- * write the handshake response to conn->write_buffer.  must be called after
- * protocol_read_handshake.  on success, advances state from
+ * write the handshake response to the client to conn->info.buffer. 
+ * must be called after protocol_read_handshake_request.  on success,
+ * advances state from 
  * PROTOCOL_STATE_WRITE_HANDSHAKE -> PROTOCOL_STATE_CONNECTED
  */
-protocol_handshake_result protocol_write_handshake(
+protocol_handshake_result protocol_write_handshake_response(
     protocol_conn* conn,
-    const char* protocol,
-    const char* extensions
+    const char* protocol, /* (optional) */
+    const char** extensions /* NULL terminated (optional) */
+);
+
+/*
+ * parse the handshake response from the server from conn->info.buffer
+ * On success, advances state from
+ * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_CONNECTED
+ */
+protocol_handshake_result protocol_read_handshake_response(
+    protocol_conn* conn
+);
+
+/*
+ * write the client handshake request to conn->write_buffer. On success,
+ * advances state to PROTOCOL_STATE_READ_HANDSHAKE.  extra_headers is 
+ * in (key,value) order
+ */
+protocol_handshake_result protocol_write_handshake_request(
+    protocol_conn* conn,
+    const char* resource,
+    const char** protocols, /* NULL terminated (optional) */
+    const char** extensions, /* NULL terminated (optional) */
+    const char** extra_headers /* NULL terminated, (optional) */
 );
 
 /*
@@ -273,16 +316,28 @@ const char* protocol_get_header_value(
 );
 
 /*
- * Helper for easily getting the number of values the client sent in the
+ * Helper for easily getting the number of values the endpoint sent in the
  * Sec-WebSocket-Protocol header
  */
 int protocol_get_num_subprotocols(protocol_conn* conn);
 
 /*
  * Helper for getting values of the Sec-WebSocket-Protocol header sent by
- * the client
+ * the endpoint
  */
 const char* protocol_get_subprotocol(protocol_conn* conn, int index);
+
+/*
+ * Helper for easily getting the number of values the client sent in the
+ * Sec-WebSocket-Extensions header
+ */
+int protocol_get_num_extensions(protocol_conn* conn);
+
+/*
+ * Helper for getting values of the Sec-WebSocket-Extensions header sent by
+ * the client
+ */
+const char* protocol_get_extension(protocol_conn* conn, int index);
 
 /*
  * process a frame from the read buffer starting at start_pos into
@@ -298,11 +353,19 @@ protocol_result protocol_read_msg(
 );
 
 /*
- * write the handshake response to conn->write_buffer.  must be called after
- * protocol_read_handshake.  on success, DOES NOT advance state.  This should
- * be done after the write buffer has actually be written to a socket.
+ * write write_msg to conn->write_buffer.  must be called after
+ * protocol_read_handshake_request.
  */
-protocol_result protocol_write_msg(
+protocol_result protocol_write_server_msg(
+    protocol_conn* conn,
+    protocol_msg* write_msg
+);
+
+/*
+ * write write_msg to conn->write_buffer.  must be called after
+ * protocol_read_handshake_request.
+ */
+protocol_result protocol_write_client_msg(
     protocol_conn* conn,
     protocol_msg* write_msg
 );

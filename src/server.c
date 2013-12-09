@@ -167,7 +167,9 @@ static int init_conn(server_conn* conn, server* serv)
     int r = protocol_init_conn(
         &conn->pconn,
         &serv->options.conn_settings,
-        serv->options.protocol_buf_init_len
+        serv->options.protocol_buf_init_len,
+        NULL,
+        NULL
     );
     conn->serv = serv;
     conn->write_pos = 0;
@@ -330,10 +332,11 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
              * if we're in the write handshake state, we just wrote
              * the handshake and we're now connected
              */
-            if (conn->pconn.state == PROTOCOL_STATE_WRITE_HANDSHAKE)
+            /*if (conn->pconn.state == PROTOCOL_STATE_WRITE_HANDSHAKE)
             {
                 conn->pconn.state = PROTOCOL_STATE_CONNECTED;
             }
+            */
         }
     }
 
@@ -456,8 +459,11 @@ static void parse_client_messages(server_conn* conn)
 
 static void read_client_handshake(server_conn* conn)
 {
-    protocol_handshake_result hr = protocol_read_handshake(&conn->pconn);
+    protocol_handshake_result hr =
+        protocol_read_handshake_request(&conn->pconn);
     server* serv = conn->serv;
+    int* extensions_out = NULL;
+    const char** extensions = NULL;
 
     switch (hr)
     {
@@ -476,22 +482,63 @@ static void read_client_handshake(server_conn* conn)
             "Read invalid handshake. fd: %d",
             conn->fd
         );
-        deactivate_conn(conn);
-        return;
+        goto reject_client;
     default:
         hhassert(0);
-        return;
+        goto reject_client;
     }
 
-    if (serv->callbacks.on_open_callback != NULL &&
-        !serv->callbacks.on_open_callback(conn))
+    /* initialize output params */
+    int subprotocol_out = -1;
+    int num_extensions = server_get_num_client_extensions(conn);
+    extensions_out = hhmalloc(num_extensions * sizeof(*extensions_out));
+    for (int i = 0; i < num_extensions; i++)
     {
-        deactivate_conn(conn);
-        return;
+        extensions_out[i] = -1;
     }
 
-    /* TODO: allow server to provide subprotocols/extensions desired... */
-    if ((hr = protocol_write_handshake(&conn->pconn, NULL, NULL)) !=
+    /*
+     * allow users of this interface to reject or pick
+     * subprotocols/extensions
+     */
+    if (serv->callbacks.on_open_callback != NULL &&
+        !serv->callbacks.on_open_callback(
+            conn,
+            &subprotocol_out,
+            extensions_out
+        )
+    )
+    {
+        goto reject_client;
+    }
+
+    char* subprotocol = NULL;
+    if (subprotocol_out >= 0 )
+    {
+        server_get_client_subprotocol(
+            conn,
+            subprotocol_out
+        );
+    }
+
+    if (extensions_out[0] >= 0)
+    {
+        /* +1 for terminating NULL */
+        extensions = hhmalloc((num_extensions + 1) * sizeof(*extensions));
+        int e = 0;
+        for (e = 0; e < num_extensions; e++)
+        {
+            if (extensions_out[e] < 0) break;
+            extensions[e] = (char*)server_get_client_extension(
+                conn,
+                extensions_out[e]
+            );
+        }
+        extensions[e] = NULL;
+    }
+
+    if ((hr=protocol_write_handshake_response(
+                    &conn->pconn,subprotocol,extensions)) !=
             PROTOCOL_HANDSHAKE_SUCCESS)
     {
         server_log(
@@ -501,8 +548,22 @@ static void read_client_handshake(server_conn* conn)
             conn->fd,
             hr
         );
-        deactivate_conn(conn);
-        return;
+        goto reject_client;
+    }
+
+    hhfree(extensions_out);
+    extensions_out = NULL;
+
+    if (subprotocol != NULL)
+    {
+        hhfree(subprotocol);
+        subprotocol = NULL;
+    }
+
+    if (extensions != NULL)
+    {
+        hhfree(extensions);
+        extensions = NULL;
     }
 
     /* queue up writing the handshake response back */
@@ -522,9 +583,16 @@ static void read_client_handshake(server_conn* conn)
             "write_handshake event loop error: %d!",
             er
         );
-        deactivate_conn(conn);
-        return;
+        goto reject_client;
     }
+
+    return;
+reject_client:
+    if (extensions_out != NULL) hhfree(extensions_out);
+    if (subprotocol != NULL) hhfree(subprotocol);
+    if (extensions != NULL) hhfree(extensions);
+    deactivate_conn(conn);
+    return;
 }
 
 static void read_from_client_callback(event_loop* loop, int fd, void* data)
@@ -564,8 +632,7 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
     ssize_t num_read = 0;
     int end_pos = darray_get_len((*read_buffer));
 
-    darray_ensure(read_buffer, read_len);
-    char* buf = darray_get_data((*read_buffer));
+    char* buf = darray_ensure(read_buffer, read_len);
     buf = &buf[end_pos];
 
     num_read = read(fd, buf, read_len);
@@ -736,13 +803,13 @@ static server_result server_conn_send_pmsg(
     }
 
     protocol_result pr;
-    if ((pr = protocol_write_msg(&conn->pconn, pmsg)) !=
+    if ((pr = protocol_write_server_msg(&conn->pconn, pmsg)) !=
             PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
         server_log(
             &conn->serv->options,
             CONFIG_LOG_LEVEL_ERROR,
-            "protocol_write_msg error: %d",
+            "protocol_write_server_msg error: %d",
             pr
         );
         return SERVER_RESULT_FAIL;
@@ -926,6 +993,22 @@ int server_get_num_client_subprotocols(server_conn* conn)
 const char* server_get_client_subprotocol(server_conn* conn, int index)
 {
     return protocol_get_subprotocol(&conn->pconn, index);
+}
+
+/*
+ * get number of extensions the client reported they support
+ */
+int server_get_num_client_extensions(server_conn* conn)
+{
+    return protocol_get_num_extensions(&conn->pconn);
+}
+
+/*
+ * get an extension the client reported they support
+ */
+const char* server_get_client_extension(server_conn* conn, int index)
+{
+    return protocol_get_extension(&conn->pconn, index);
 }
 
 /*

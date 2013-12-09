@@ -42,6 +42,20 @@
 #include <string.h>
 #include <strings.h>
 
+typedef enum
+{
+    PROTOCOL_ENDPOINT_CLIENT,
+    PROTOCOL_ENDPOINT_SERVER
+} protocol_endpoint;
+
+#define HEADER_PROTOCOL "Sec-WebSocket-Protocol"
+#define HEADER_EXTENSION "Sec-WebSocket-Extensions"
+#define HEADER_KEY "Sec-WebSocket-Key"
+#define KEY_LEN 16
+#define BASE64_MAX_OUTPUT_LEN(n) ((4 * (((n) + 3) / 3)) + 1)
+
+static char g_header_template[] = "%s:%s\r\n";
+#define HEADER_TEMPLATE_LEN 4 /* colon,\r,\n,null  */
 
 static int is_valid_opcode(protocol_opcode opcode)
 {
@@ -239,8 +253,8 @@ static int is_comma_delimited_header(const char* header)
 {
     static const char* comma_headers[] =
     {
-        "Sec-WebSocket-Protocol",
-        "Sec-WebSocket-Extensions",
+        HEADER_PROTOCOL,
+        HEADER_EXTENSION,
         "Accept-Encoding",
         "TE"
     };
@@ -274,27 +288,12 @@ static char* eat_digits(char* buf)
     return buf;
 }
 
-static char* parse_request_line(
-    protocol_handshake* info,
+static char* parse_http_version(
     char* buf,
-    char* end_buf)
+    char* end_buf
+)
 {
-    const int get_len = 4;
     const int http_len = 5;
-
-    buf = eat_whitespace(buf);
-    if ((buf + get_len) >= end_buf) return NULL;
-
-    /* ALL WebSocket handshakes are HTTP 'GETs' */
-    if (strncmp(buf, "GET ", 4) != 0) return NULL;
-    buf += get_len;
-
-    char* end_uri = strchr(buf, ' ');
-    if (end_uri == NULL) return NULL;
-    *end_uri = '\0'; /* make this a string */
-    info->resource_name = buf;
-
-    buf = end_uri + 1;
     if ((buf + http_len) >= end_buf) return NULL;
     if (strncmp(buf, "HTTP/", http_len) != 0) return NULL;
     buf += http_len;
@@ -307,9 +306,53 @@ static char* parse_request_line(
     old_buf = buf;
     buf = eat_digits(buf);
     if (buf == old_buf) return NULL;
-    if ((buf + 2) >= end_buf) return NULL;
-    if (strncmp(buf, "\r\n", 2) != 0) return NULL;
-    buf += 2;
+
+    return buf;
+}
+
+static char* parse_http_line(
+    protocol_handshake* info,
+    char* buf,
+    char* end_buf,
+    protocol_endpoint type)
+{
+    const int get_len = 4;
+
+    buf = eat_whitespace(buf);
+    if ((buf + get_len) >= end_buf) return NULL;
+
+    char* word_end;
+    char* end_uri;
+    switch (type)
+    {
+    case PROTOCOL_ENDPOINT_SERVER:
+        if (strncmp(buf, "GET ", get_len) != 0) return NULL;
+        buf += get_len;
+        end_uri = strchr(buf, ' ');
+        if (end_uri == NULL) return NULL;
+        *end_uri = '\0'; /* make this a string */
+        info->resource_name = buf;
+        buf = end_uri + 1;
+        buf = parse_http_version(buf, end_buf);
+        if (buf == NULL) return NULL;
+        if ((buf + 2) >= end_buf) return NULL;
+        if (strncmp(buf, "\r\n", 2) != 0) return NULL;
+        buf += 2;
+        break;
+    case PROTOCOL_ENDPOINT_CLIENT:
+        buf = parse_http_version(buf, end_buf);
+        buf++;
+        if (buf >= end_buf) return NULL;
+        word_end = strchr(buf, ' ');
+        if (word_end == NULL) return NULL;
+        *word_end = '\0'; /* make this a string */
+        if ((word_end - buf != 3) || strncmp(buf, "101", 3) != 0) return NULL;
+        buf = word_end + 1;
+        char* end_line = strstr(buf, "\r\n");
+        if (end_line == NULL) return NULL;
+        buf = end_line + 2;
+        break;
+    }
 
     return buf;
 }
@@ -609,11 +652,14 @@ static protocol_result protocol_parse_frame_hdr(
 /* create a protocol_conn on the heap, init buffers to init_buf_len bytes */
 protocol_conn* protocol_create_conn(
     protocol_settings* settings,
-    size_t init_buf_len
+    size_t init_buf_len,
+    random_func* rand_func,
+    void* userdata
 )
 {
     protocol_conn* conn = hhmalloc(sizeof(*conn));
-    if (conn == NULL || protocol_init_conn(conn, settings, init_buf_len) < 0)
+    if (conn == NULL || protocol_init_conn(conn, settings, init_buf_len,
+                            rand_func, userdata) < 0)
     {
         if (conn != NULL && conn->info.headers != NULL)
         {
@@ -644,7 +690,9 @@ protocol_conn* protocol_create_conn(
 int protocol_init_conn(
     protocol_conn* conn,
     protocol_settings* settings,
-    size_t init_buf_len
+    size_t init_buf_len,
+    random_func* rand_func,
+    void* userdata
 )
 {
     memset(conn, 0, sizeof(*conn));
@@ -667,6 +715,8 @@ int protocol_init_conn(
     conn->error_msg = NULL;
     conn->error_code = 0;
     conn->error_len = 0;
+    conn->rand_func = rand_func;
+    conn->userdata = userdata;
 
     return 0;
 }
@@ -730,11 +780,10 @@ void protocol_reset_conn(protocol_conn* conn)
     darray_clear(conn->write_buffer);
 }
 
-/*
- * parse the handshake from conn->info.buffer. On success, advances state from
- * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_WRITE_HANDSHAKE
- */
-protocol_handshake_result protocol_read_handshake(protocol_conn* conn)
+static protocol_handshake_result protocol_read_handshake(
+    protocol_conn* conn,
+    protocol_endpoint type
+)
 {
     protocol_handshake* info = &conn->info;
 
@@ -754,7 +803,7 @@ protocol_handshake_result protocol_read_handshake(protocol_conn* conn)
     const char null_term = '\0';
     darray_append(&info->buffer, &null_term, 1);
 
-    buf = parse_request_line(info, buf, end_buf);
+    buf = parse_http_line(info, buf, end_buf, type);
     if (buf == NULL) goto read_err;
 
     buf = parse_headers(info, buf, end_buf);
@@ -762,7 +811,15 @@ protocol_handshake_result protocol_read_handshake(protocol_conn* conn)
 
     if (strncmp(buf, "\r\n", 2) != 0) goto read_err;
 
-    conn->state = PROTOCOL_STATE_WRITE_HANDSHAKE;
+    switch (type)
+    {
+    case PROTOCOL_ENDPOINT_SERVER:
+        conn->state = PROTOCOL_STATE_WRITE_HANDSHAKE;
+        break;
+    case PROTOCOL_ENDPOINT_CLIENT:
+        conn->state = PROTOCOL_STATE_CONNECTED;
+        break;
+    }
     return PROTOCOL_HANDSHAKE_SUCCESS;
 
 read_err:
@@ -770,23 +827,32 @@ read_err:
 }
 
 /*
+ * parse the handshake from conn->info.buffer. On success, advances state from
+ * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_WRITE_HANDSHAKE
+ */
+protocol_handshake_result protocol_read_handshake_request(protocol_conn* conn)
+{
+    return protocol_read_handshake(conn, PROTOCOL_ENDPOINT_SERVER);
+}
+
+/*
  * write the handshake response to conn->write_buffer.  must be called after
- * protocol_read_handshake.  on success, DOES NOT advance state.  This should
+ * protocol_read_handshake_request.  on success, DOES NOT advance state.  This should
  * be done after the write buffer has actually be written to a socket.
  */
-protocol_handshake_result protocol_write_handshake(
+protocol_handshake_result protocol_write_handshake_response(
     protocol_conn* conn,
     const char* protocol,
-    const char* extensions
+    const char** extensions
 )
 {
     hhassert(conn->state == PROTOCOL_STATE_WRITE_HANDSHAKE);
 
     /* this constant comes straight from RFC 6455 */
     static const char key_guid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    static const char protocol_template[] = "Sec-WebSocket-Protocol: %s\r\n";
+    static const char protocol_template[] = HEADER_PROTOCOL ": %s\r\n";
     static const char extension_template[] =
-        "Sec-WebSocket-Extensions: %s\r\n";
+        HEADER_EXTENSION ": %s\r\n";
     static const char response_template[] =
         "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
@@ -830,7 +896,7 @@ protocol_handshake_result protocol_write_handshake(
     SHA1Result(&context, (uint8_t*)sha_result);
 
     /* encode our SHA1 as base64 */
-    char response_key[(4 * ((SHA1HashSize + 3) / 3)) + 1];
+    char response_key[BASE64_MAX_OUTPUT_LEN(SHA1HashSize)];
     base64_encodestate encode_state;
     base64_init_encodestate(&encode_state);
     int num_encoded = base64_encode_block(
@@ -843,11 +909,7 @@ protocol_handshake_result protocol_write_handshake(
         &response_key[num_encoded],
         &encode_state
     );
-
-    /* encode_blockend adds a \n... we want to null terminate */
     size_t response_key_len = num_encoded - 1;
-    hhassert(response_key_len <= sizeof(response_key));
-    response_key[response_key_len] = '\0';
 
     /*
      * put the whole response on the connection's write buffer
@@ -869,14 +931,18 @@ protocol_handshake_result protocol_write_handshake(
 
     if (extensions != NULL)
     {
-        total_len += strlen(extensions);
+        const char** exts = extensions;
+        while ((*exts) != NULL)
+        {
+            total_len += strlen(*exts);
 
-        /* -1 for terminator, -2 for %s in extension_template */
-        total_len += sizeof(extension_template) - 1 - 2;
+            /* -1 for terminator, -2 for %s in extension_template */
+            total_len += sizeof(extension_template) - 1 - 2;
+            exts++;
+        }
     }
 
-    darray_ensure(&conn->write_buffer, total_len);
-    char* buf = darray_get_data(conn->write_buffer);
+    char* buf = darray_ensure(&conn->write_buffer, total_len);
 
     /* write out the mandatory stuff */
     num_written = 0;
@@ -896,12 +962,17 @@ protocol_handshake_result protocol_write_handshake(
     /* write out the extension header, if necessary */
     if (extensions != NULL)
     {
-        num_written += snprintf(
-            &buf[num_written],
-            total_len - num_written,
-            extension_template,
-            extensions
-        );
+        const char** exts = extensions;
+        while ((*exts) != NULL)
+        {
+            num_written += snprintf(
+                &buf[num_written],
+                total_len - num_written,
+                extension_template,
+                *exts
+            );
+            exts++;
+        }
     }
 
     /* write out the closing CRLF */
@@ -917,6 +988,192 @@ protocol_handshake_result protocol_write_handshake(
      */
     hhassert(num_written == (total_len - 1));
     darray_add_len(conn->write_buffer, total_len - 1);
+
+    conn->state = PROTOCOL_STATE_CONNECTED;
+
+    return PROTOCOL_HANDSHAKE_SUCCESS;
+}
+
+/*
+ * parse the handshake response from the server from conn->info.buffer
+ * On success, advances state from
+ * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_CONNECTED
+ */
+protocol_handshake_result protocol_read_handshake_response(
+    protocol_conn* conn
+)
+{
+    return protocol_read_handshake(conn, PROTOCOL_ENDPOINT_CLIENT);
+}
+
+static size_t append_key_header(darray** array, protocol_conn* conn)
+{
+    hhassert(conn->rand_func != NULL);
+
+    /* generate random 16 byte value */
+    char request_key[KEY_LEN];
+    uint32_t* pos = (uint32_t*)request_key;
+    for (unsigned int i = 0; i < (KEY_LEN / sizeof(uint32_t)); i++)
+    {
+        (*pos) = conn->rand_func(conn);
+        pos++;
+    }
+
+    /* encode value as base64  */
+    char request_key_base64[BASE64_MAX_OUTPUT_LEN(KEY_LEN)];
+    base64_encodestate encode_state;
+    base64_init_encodestate(&encode_state);
+    int num_encoded = base64_encode_block(
+        request_key,
+        KEY_LEN,
+        request_key_base64,
+        &encode_state
+    );
+    num_encoded += base64_encode_blockend(
+        &request_key_base64[num_encoded],
+        &encode_state
+    );
+
+    /* write out header value  */
+    size_t header_len =
+        strlen(HEADER_KEY) + strlen(request_key_base64) + HEADER_TEMPLATE_LEN;
+    char* buf = darray_ensure(array, header_len);
+    size_t write_pos = darray_get_len((*array));
+    size_t num_written = snprintf(
+        &buf[write_pos],
+        header_len,
+        g_header_template,
+        HEADER_KEY,
+        request_key_base64
+    );
+    darray_add_len((*array), num_written);
+
+    return num_written;
+}
+
+static size_t append_headers_list(
+    darray** array,
+    const char* key,
+    const char** values
+)
+{
+    size_t write_pos = darray_get_len((*array));
+    size_t total_written = 0;
+    size_t key_len = strlen(key);
+    while ((*values) != NULL)
+    {
+        /* 4 for colon and newlines in header_template, and null term */
+        size_t header_len = key_len + strlen(*values) + HEADER_TEMPLATE_LEN;
+        char* buf = darray_ensure(array, header_len);
+        size_t num_written = snprintf(
+            &buf[write_pos],
+            header_len,
+            g_header_template,
+            key,
+            *values
+        );
+        values++;
+        darray_add_len((*array), num_written);
+        write_pos += num_written;
+        total_written += num_written;
+    }
+
+    return total_written;
+}
+
+/*
+ * write the client handshake request to conn->write_buffer. On success,
+ * advances state to PROTOCOL_STATE_READ_HANDSHAKE
+ */
+protocol_handshake_result protocol_write_handshake_request(
+    protocol_conn* conn,
+    const char* resource,
+    const char** protocols, /* NULL terminated (optional) */
+    const char** extensions, /* NULL terminated (optional) */
+    const char** extra_headers /* NULL terminated, (optional) */
+)
+{
+    static const char http_line[] =
+        "GET %s HTTP/1.1\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Version: 13\r\n";
+
+    hhassert(darray_get_len(conn->write_buffer) == 0);
+
+    /* -2 for %s */
+    size_t http_line_size = sizeof(http_line) - 2 + strlen(resource);
+    char* buf = darray_ensure(&conn->write_buffer, http_line_size);
+
+    size_t total_written = 0;
+    total_written += snprintf(
+        &buf[total_written],
+        http_line_size,
+        http_line,
+        resource
+    );
+    darray_add_len(conn->write_buffer, total_written);
+
+    /* write Sec-WebSocket-Key header */
+    total_written += append_key_header(&conn->write_buffer, conn);
+
+    /* write Sec-WebSocket-Protocol header */
+    total_written += append_headers_list(
+        &conn->write_buffer,
+        HEADER_PROTOCOL,
+        protocols
+    );
+
+    /* write Sec-WebSocket-Extensions header  */
+    total_written += append_headers_list(
+        &conn->write_buffer,
+        HEADER_EXTENSION,
+        extensions
+    );
+
+    /* buf could have changed */
+    buf = darray_get_data(conn->write_buffer);
+
+    /* write any other headers the user provided */
+    while ((*extra_headers) != NULL)
+    {
+        /* 4 for colon and newlines in header_template, and null term */
+        size_t key_len = strlen(*extra_headers);
+        const char* key = *extra_headers;
+        extra_headers++;
+        hhassert((*extra_headers) != NULL);
+        const char* value = *extra_headers;
+        size_t value_len = strlen(*extra_headers);
+        size_t header_len = key_len + value_len + HEADER_TEMPLATE_LEN;
+
+        char* buf = darray_ensure(&conn->write_buffer, header_len);
+        size_t num_written = snprintf(
+            &buf[total_written],
+            header_len,
+            g_header_template,
+            key,
+            value
+        );
+        darray_add_len(conn->write_buffer, num_written);
+        total_written += num_written;
+        extra_headers++;
+    }
+
+    /* write out the closing CRLF */
+    const char closing_chars[] = "\r\n";
+    size_t close_size = sizeof(closing_chars);
+
+    /* +1 to add null term back in */
+    buf = darray_ensure(&conn->write_buffer, close_size);
+    total_written += snprintf(
+        &buf[total_written],
+        close_size,
+        closing_chars
+    );
+    darray_add_len(conn->write_buffer, close_size - 1);
+
+    hhassert(total_written == darray_get_len(conn->write_buffer));
+    conn->state = PROTOCOL_STATE_READ_HANDSHAKE;
 
     return PROTOCOL_HANDSHAKE_SUCCESS;
 }
@@ -972,7 +1229,7 @@ const char* protocol_get_header_value(
  */
 int protocol_get_num_subprotocols(protocol_conn* conn)
 {
-    return protocol_get_num_header_values(conn, "Sec-WebSocket-Protocol");
+    return protocol_get_num_header_values(conn, HEADER_PROTOCOL);
 }
 
 /*
@@ -981,7 +1238,25 @@ int protocol_get_num_subprotocols(protocol_conn* conn)
  */
 const char* protocol_get_subprotocol(protocol_conn* conn, int index)
 {
-    return protocol_get_header_value(conn, "Sec-WebSocket-Protocol", index);
+    return protocol_get_header_value(conn, HEADER_PROTOCOL, index);
+}
+
+/*
+ * Helper for easily getting the number of values the client sent in the
+ * Sec-WebSocket-Extensions header
+ */
+int protocol_get_num_extensions(protocol_conn* conn)
+{
+    return protocol_get_num_header_values(conn, HEADER_EXTENSION);
+}
+
+/*
+ * Helper for getting values of the Sec-WebSocket-Extensions header sent by
+ * the client
+ */
+const char* protocol_get_extension(protocol_conn* conn, int index)
+{
+    return protocol_get_header_value(conn, HEADER_EXTENSION, index);
 }
 
 /*
@@ -1295,13 +1570,10 @@ protocol_result protocol_read_msg(
     }
 }
 
-/*
- * put the message in write_msg on conn->write_buffer.
- * msg will be broken up into frames of size write_max_frame_size
- */
-protocol_result protocol_write_msg(
+static protocol_result protocol_write_msg(
     protocol_conn* conn,
-    protocol_msg* write_msg
+    protocol_msg* write_msg,
+    protocol_endpoint type
 )
 {
     protocol_msg_type msg_type = write_msg->type;
@@ -1331,18 +1603,19 @@ protocol_result protocol_write_msg(
 
     int64_t num_written = 0;
     int64_t payload_num_written = 0;
+    int num_mask_bytes = (type == PROTOCOL_ENDPOINT_SERVER) ? 0 : 4;
     do
     {
         int64_t num_remaining = msg_len - payload_num_written;
         int64_t payload_len = hhmin(num_remaining, max_frame_size);
         int num_extra_len_bytes = get_num_extra_len_bytes(payload_len);
-        size_t total_frame_len = 2 + num_extra_len_bytes + payload_len;
+        size_t total_frame_len =
+            2 + num_mask_bytes + num_extra_len_bytes + payload_len;
 
         /* make sure there is enough room for this frame */
-        darray_ensure(&conn->write_buffer, total_frame_len);
+        char* data = darray_ensure(&conn->write_buffer, total_frame_len);
 
         /* get the data */
-        char* data = darray_get_data(conn->write_buffer);
         data = &data[darray_get_len(conn->write_buffer)];
         const char* start_data = data;
 
@@ -1351,9 +1624,11 @@ protocol_result protocol_write_msg(
             0x80 : 0x00;
 
         /* write the first byte to the buffer */
-        char first_byte = first_byte_mask | opcode;
-        *data = first_byte;
+        *data =first_byte_mask | opcode;
         data++;
+
+        /* set the mask bit if appropriate */
+        *data = (type == PROTOCOL_ENDPOINT_CLIENT) ? 0x80 : 0x00;
 
         /* write the payload length to the buffer */
         uint16_t short_len;
@@ -1363,12 +1638,12 @@ protocol_result protocol_write_msg(
         switch (num_extra_len_bytes)
         {
         case 0:
-            *data = (char)payload_len;
+            *data |= (char)payload_len; /* |= to avoid blowing away mask bit */
             data++;
             break;
 
         case 2:
-            *data = 126;
+            *data |= 126; /* |= to avoid blowing away mask bit */
             data++;
             short_len = hh_htons((uint16_t)payload_len);
             short_data = (uint16_t*)data;
@@ -1377,7 +1652,7 @@ protocol_result protocol_write_msg(
             break;
 
         case 8:
-            *data = 127;
+            *data |= 127; /* |= to avoid blowing away mask bit */
             data++;
             long_len = hh_htonll((uint64_t)payload_len);
             long_data = (uint64_t*)data;
@@ -1390,8 +1665,22 @@ protocol_result protocol_write_msg(
             break;
         }
 
+        uint32_t val;
+        switch (type)
+        {
+        case PROTOCOL_ENDPOINT_SERVER:
+            break;
+        case PROTOCOL_ENDPOINT_CLIENT:
+            hhassert(conn->rand_func != NULL);
+            val = conn->rand_func(conn);
+            hhassert(sizeof(val) == num_mask_bytes);
+            memcpy(data, &val, num_mask_bytes);
+            data += num_mask_bytes;
+            break;
+        }
+
     #ifdef DEBUG
-        hhassert(start_data + 2 + num_extra_len_bytes == data);
+        hhassert(start_data+2+num_extra_len_bytes+num_mask_bytes == data);
     #else
         hhunused(start_data);
     #endif
@@ -1408,6 +1697,30 @@ protocol_result protocol_write_msg(
     } while (payload_num_written < msg_len);
 
     return PROTOCOL_RESULT_MESSAGE_FINISHED;
+}
+
+/*
+ * put the message in write_msg on conn->write_buffer.
+ * msg will be broken up into frames of size write_max_frame_size
+ */
+protocol_result protocol_write_server_msg(
+    protocol_conn* conn,
+    protocol_msg* write_msg
+)
+{
+    return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_SERVER);
+}
+
+/*
+ * write write_msg to conn->write_buffer.  must be called after
+ * protocol_read_handshake_request.
+ */
+protocol_result protocol_write_client_msg(
+    protocol_conn* conn,
+    protocol_msg* write_msg
+)
+{
+    return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_CLIENT);
 }
 
 BOOL protocol_is_data(protocol_msg_type msg_type)

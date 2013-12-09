@@ -45,8 +45,23 @@ typedef struct
     int64_t msg_len;
 } server_msg;
 
-/* return false if you want to reject this client */
-typedef BOOL (server_on_open)(server_conn* conn);
+/*
+ * return false if you want to reject this client
+ * 
+ * output params:
+ *      - index of subprotocol you want to use (index determined by 
+ *        server_get_client_subprotocol).  Set -1 or don't write to this to
+ *        choose 0 subprotocols
+ *
+ *      - indices of extensions to use. extensions_out is an array with
+ *        length equal to server_get_num_extensions. Fill in starting from
+ *        index 0. Set all to -1 or don't write to this to choose 0 extensions
+ */
+typedef BOOL (server_on_open)(
+    server_conn* conn,
+    int* subprotocol_out,
+    int* extensions_out
+);
 typedef void (server_on_message)(server_conn* conn, server_msg* msg);
 typedef void (server_on_ping)(
     server_conn* conn_info,
@@ -129,6 +144,16 @@ int server_get_num_client_subprotocols(server_conn* conn);
  * get a subprotocol the client reported they support
  */
 const char* server_get_client_subprotocol(server_conn* conn, int index);
+
+/*
+ * get number of extensions the client reported they support
+ */
+int server_get_num_client_extensions(server_conn* conn);
+
+/*
+ * get an extension the client reported they support
+ */
+const char* server_get_client_extension(server_conn* conn, int index);
 
 /*
  * stop the server, close all connections. will cause server_listen

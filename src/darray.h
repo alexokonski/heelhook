@@ -54,6 +54,12 @@ darray* darray_create_data(
     int init_size_reserved
 );
 
+/* create a new darray that's a copy of source */
+darray* darray_create_copy(const darray* source);
+
+/* copy source to existing darray dest */
+void darray_copy(darray** dest, const darray* source);
+
 /* free/destroy a darray */
 void darray_destroy(darray* array);
 
@@ -79,8 +85,10 @@ void darray_slice(darray* array, int start, int end);
  * ensure the darray has room for this many additional elements. usage:
  *
  * darray_ensure(&my_array, 10);
+ *
+ * returns the new data pointer for array (darray_get_data)
  */
-void darray_ensure(darray** array, int num_elems);
+void* darray_ensure(darray** array, int num_elems);
 
 /* add to the length of the darray - just arithmetic, doesn't move memory */
 void darray_add_len(darray* array, int num_elems);

@@ -45,6 +45,9 @@ struct darray
     char data[];
 };
 
+/* Only allocate a max of  2 MB at a time when resizing */
+#define MAX_ENSURE_SIZE (2 * 1024 * 1024)
+
 /*
  * make a darray.  init_size_reserved is the number of elements you want
  * space for right now.
@@ -84,6 +87,34 @@ darray* darray_create_data(
 
     darray_append(&array, data, num_elements);
     return array;
+}
+
+/* create a new darray that's a copy of source */
+darray* darray_create_copy(const darray* source)
+{
+    size_t data_size = (source->elem_size * source->size_reserved);
+    size_t size = sizeof(darray) + data_size;
+    darray* array = hhmalloc(size);
+    if (array == NULL) return NULL;
+
+    array->len = source->len;
+    array->size_reserved = source->size_reserved;
+    array->elem_size = source->elem_size;
+    memcpy(array->data, source->data, source->len * source->elem_size);
+    return array;
+}
+
+/* copy source to existing darray dest */
+void darray_copy(darray** dest, const darray* source)
+{
+    darray* arr = *dest;
+    arr->len = source->len;
+    arr->size_reserved = source->size_reserved;
+    arr->elem_size = source->elem_size;
+    size_t data_size = arr->size_reserved * arr->elem_size;
+    arr = hhrealloc(arr, data_size + sizeof(darray));
+    memmove(arr->data, source->data, source->len * source->elem_size);
+    *dest = arr;
 }
 
 /* free/destroy a darray */
@@ -136,8 +167,10 @@ void darray_slice(darray* array, int start, int end)
  * ensure the darray has room for this many additional elements. usage:
  *
  * darray_ensure(&my_array, 10);
+ *
+ * returns the new data pointer for array (darray_get_data)
  */
-void darray_ensure(darray** array, int num_elems)
+void* darray_ensure(darray** array, int num_elems)
 {
     darray* arr = *array;
     int reserved = arr->size_reserved;
@@ -146,16 +179,26 @@ void darray_ensure(darray** array, int num_elems)
     if ((reserved - len) < num_elems)
     {
         int num_extra = (len + num_elems) - reserved;
-        int num_new_elems = hhmax(num_extra, reserved * 2);
+        int max_reserved_elems = reserved * 2;
+
+        /* cap the amount of memory we'll use */
+        if (MAX_ENSURE_SIZE < (max_reserved_elems * arr->elem_size))
+        {
+            max_reserved_elems = MAX_ENSURE_SIZE / arr->elem_size;
+        }
+
+        int num_new_elems = hhmax(num_extra, max_reserved_elems);
         int new_size =
             (arr->elem_size * (reserved + num_new_elems)) + sizeof(darray);
 
         arr = hhrealloc(arr, new_size);
         (*array) = arr;
-        if (arr == NULL) return;
+        if (arr == NULL) return NULL;
 
         arr->size_reserved += num_new_elems;
     }
+
+    return arr->data;
 }
 
 /* add to the length of the darray - just arithmetic, doesn't move memory */
@@ -181,7 +224,7 @@ void darray_append(darray** array, const void* data, int num_elems)
 
     void* dest = arr->data + (arr->len * arr->elem_size);
     size_t data_size = num_elems * arr->elem_size;
-    memcpy(dest, data, data_size);
+    memmove(dest, data, data_size);
     arr->len += num_elems;
 }
 

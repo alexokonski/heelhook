@@ -13,8 +13,14 @@ static void on_message_received(server_conn* conn, server_msg* msg)
     server_conn_send_msg(conn, msg);
 }
 
-static BOOL on_open(server_conn* conn)
+static BOOL on_open(
+    server_conn* conn,
+    int* subprotocol_out,
+    int* extensions_out
+)
 {
+    hhunused(subprotocol_out);
+    hhunused(extensions_out);
     int num_protocols = server_get_num_client_subprotocols(conn);
     printf("Got subprotocols [\n");
     for (int i = 0; i < num_protocols; i++)

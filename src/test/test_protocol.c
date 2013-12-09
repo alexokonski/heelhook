@@ -54,16 +54,28 @@ static const struct
         {"chat", "superchat", NULL}, 0},
     {"Sec-WebSocket-Version", "13", {"13", NULL},  0},
     {"Sec-WebSocket-Protocol", "otherchat", {"otherchat", NULL}, 2},
+    {"Sec-WebSocket-Extensions", "ext1, ext2", {"ext1", "ext2", NULL}, 0},
     {NULL, NULL, {NULL}, 0} /* Sentinel */
 };
-const uint32_t NUM_UNIQUE_HEADERS = 7;
+static const char* TEST_PROTOCOLS[] = {"chat", "superchat", "otherchat", NULL};
+static const char* TEST_EXTENSIONS[] = {"ext1", "ext2", NULL};
+const uint32_t NUM_UNIQUE_HEADERS = 8;
 static char TEST_BROKEN_REQUEST_LINE[] = "GET /thing HTTP/1.1";
 static char TEST_RESPONSE[] =
 "HTTP/1.1 101 Switching Protocols\r\n"
 "Upgrade: websocket\r\n"
 "Connection: Upgrade\r\n"
 "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
-"Sec-WebSocket-Protocol: chat\r\n\r\n";
+"Sec-WebSocket-Protocol: chat\r\n"
+"Sec-WebSocket-Extensions: ext1\r\n"
+"Sec-WebSocket-Extensions: ext2\r\n\r\n";
+
+static const char* extra_headers[] =
+{
+    "Origin", "http://example.com",
+    "Host", "server.example.com",
+    NULL
+};
 
 static const unsigned char TEST_CLIENT_FRAME[] =
 {
@@ -93,6 +105,162 @@ static const unsigned char TEST_SERVER_FRAG_2[] =
 {
     0x80, 0x02, 0x6c, 0x6f
 };
+
+/* the same message as TEST_SERVER_FRAG_* but sent from a client */
+static const unsigned char TEST_CLIENT_FRAG_3[] =
+{
+    0x01, 0x83, 't', 'h', 'e', ' ', 0x48, 0x65, 0x6c
+};
+
+static const unsigned char TEST_CLIENT_FRAG_4[] =
+{
+    0x80, 0x82, 's', 'a', 'm', 'p', 0x6c, 0x6f
+};
+
+static const char g_nonce[] = "the sample nonce";
+static uint32_t* g_index = (uint32_t*)g_nonce;
+static uint32_t test_random(protocol_conn* conn)
+{
+    hhunused(conn);
+    /*
+     * rigged "random number generator" so we generate the sample
+     * Sec-WebSocket-Key when it's invoked
+     */
+
+    uint32_t val = *g_index;
+    g_index++;
+    if ((void*)g_index > (void*)&g_nonce[sizeof(g_nonce)-2])
+    {
+        g_index = (uint32_t*)g_nonce;
+    }
+
+    return val;
+}
+
+static void compare_headers(protocol_conn* conn, const char* test)
+{
+    protocol_handshake* info = &conn->info;
+    if (strcmp(info->resource_name, RESOURCE_NAME) != 0)
+    {
+        printf(
+            "%s: FAIL, RESOURCE NAMES DON'T MATCH: %s, %s\n",
+            test,
+            info->resource_name,
+            RESOURCE_NAME
+        );
+        exit(1);
+    }
+
+    if (NUM_UNIQUE_HEADERS != darray_get_len(info->headers))
+    {
+        printf(
+            "%s: HEADER COUNTS DON'T MATCH: %lu, %d\n",
+            test,
+            darray_get_len(info->headers),
+            NUM_UNIQUE_HEADERS
+        );
+        exit(1);
+    }
+
+    for (int i = 0; g_headers[i].name != NULL; i++)
+    {
+        const char* name = g_headers[i].name;
+
+        for (int j = 0; g_headers[i].values[j] != NULL; j++)
+        {
+            int index = g_headers[i].value_index_start + j;
+            if (index >= protocol_get_num_header_values(conn, name))
+            {
+                printf(
+                    "%s: VALUE INDEX OUT OF BOUNDS: %s, %d, %d\n",
+                    test,
+                    name,
+                    index,
+                    protocol_get_num_header_values(conn, name)
+                );
+                exit(1);
+            }
+
+            const char* value = protocol_get_header_value(conn, name, index);
+            if (value == NULL)
+            {
+                printf("%s: NULL VALUE FOR NAME: %s\n", test, name);
+                exit(1);
+            }
+
+            if (strcmp(g_headers[i].values[j], value) != 0)
+            {
+                printf(
+                    "%s: VALUE DOESN'T MATCH: %s, %s\n",
+                    test,
+                    g_headers[i].values[j],
+                    value
+                );
+                exit(1);
+            }
+        }
+    }
+}
+
+static void test_frame_write(
+    BOOL is_client,
+    protocol_conn* conn,
+    const char* test_str
+)
+{
+    g_index = (uint32_t*)g_nonce;
+    size_t before_len = darray_get_len(conn->write_buffer);
+    static char out_message[] = "Hello";
+    conn->settings->write_max_frame_size = 3;
+    protocol_msg msg;
+    msg.type = PROTOCOL_MSG_TEXT;
+    msg.data = out_message;
+    msg.msg_len = sizeof(out_message) - 1;
+    protocol_result r = (is_client) ? protocol_write_client_msg(conn, &msg)
+                                    : protocol_write_server_msg(conn, &msg);
+
+    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
+    {
+        printf("%s: WRITE MSG RESULT FAIL: %d\n", test_str, r);
+        exit(1);
+    }
+
+    const unsigned char* frag1 =
+        (is_client) ? TEST_CLIENT_FRAG_3 : TEST_SERVER_FRAG_1;
+    const unsigned char* frag2 =
+        (is_client) ? TEST_CLIENT_FRAG_4 : TEST_SERVER_FRAG_2;
+    size_t size1 = (is_client) ? sizeof(TEST_CLIENT_FRAG_3)
+                               : sizeof(TEST_SERVER_FRAG_1);
+    size_t size2 = (is_client) ? sizeof(TEST_CLIENT_FRAG_4)
+                               : sizeof(TEST_SERVER_FRAG_2);
+
+    size_t new_len = darray_get_len(conn->write_buffer) - before_len;
+    size_t total_msg_len = size1 + size2;
+    if (new_len != total_msg_len)
+    {
+        printf(
+            "%s: WRITE MSG LEN WRONG %lu %lu\n",
+            test_str,
+            new_len,
+            total_msg_len
+        );
+        exit(1);
+    }
+
+    char* data = darray_get_data(conn->write_buffer);
+    data = &data[before_len];
+    if (memcmp(data, frag1, size1) != 0)
+    {
+        printf("%s: WRITE MSG MEMCMP FAIL FRAG 1\n", test_str);
+        exit(1);
+    }
+
+    if (memcmp(&data[size1], frag2, size2)!= 0)
+    {
+        printf("%s: WRITE MSG MEMCMP FAIL FRAG 2\n", test_str);
+        exit(1);
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -127,76 +295,22 @@ int main(int argc, char** argv)
     settings.write_max_frame_size = 1024;
     settings.read_max_msg_size = 65537;
     settings.read_max_num_frames = 1024;
-    protocol_conn* conn = protocol_create_conn(&settings, 20);
+    protocol_conn* conn =
+        protocol_create_conn(&settings, 20, test_random, NULL);
     darray_append(&conn->info.buffer, buffer, num_written);
     protocol_result r;
     protocol_handshake_result hr;
-    if ((hr=protocol_read_handshake(conn)) !=
+    if ((hr=protocol_read_handshake_request(conn)) !=
             PROTOCOL_HANDSHAKE_SUCCESS)
     {
         printf("FAIL, HANDSHAKE RETURN: %d\n", hr);
         exit(1);
     }
 
-    protocol_handshake* info = &conn->info;
-    if (strcmp(info->resource_name, RESOURCE_NAME) != 0)
-    {
-        printf(
-            "FAIL, RESOURCE NAMES DON'T MATCH: %s, %s\n",
-            info->resource_name,
-            RESOURCE_NAME
-        );
-        exit(1);
-    }
+    compare_headers(conn, "TEST READ_HANDSHAKE");
 
-    if (NUM_UNIQUE_HEADERS != darray_get_len(info->headers))
-    {
-        printf(
-            "HEADER COUNTS DON'T MATCH: %lu, %d\n",
-            darray_get_len(info->headers),
-            NUM_UNIQUE_HEADERS
-        );
-        exit(1);
-    }
-
-    for (int i = 0; g_headers[i].name != NULL; i++)
-    {
-        const char* name = g_headers[i].name;
-
-        for (int j = 0; g_headers[i].values[j] != NULL; j++)
-        {
-            int index = g_headers[i].value_index_start + j;
-            if (index >= protocol_get_num_header_values(conn, name))
-            {
-                printf(
-                    "VALUE INDEX OUT OF BOUNDS: %s, %d, %d\n",
-                    name,
-                    index,
-                    protocol_get_num_header_values(conn, name)
-                );
-                exit(1);
-            }
-
-            const char* value = protocol_get_header_value(conn, name, index);
-            if (value == NULL)
-            {
-                printf("NULL VALUE FOR NAME: %s\n", name);
-                exit(1);
-            }
-
-            if (strcmp(g_headers[i].values[j], value) != 0)
-            {
-                printf(
-                    "VALUE DOESN'T MATCH: %s, %s\n",
-                    g_headers[i].values[j],
-                    value
-                );
-                exit(1);
-            }
-        }
-    }
-
-    if ((hr = protocol_write_handshake(conn, "chat", NULL))
+    static const char* extensions[] = {"ext1", "ext2", NULL};
+    if ((hr = protocol_write_handshake_response(conn, "chat", extensions))
             != PROTOCOL_HANDSHAKE_SUCCESS)
     {
         printf("FAIL WRITING HANDSHAKE: %d\n", hr);
@@ -335,11 +449,10 @@ int main(int argc, char** argv)
     const int payload_len = 65536;
     int total_len = sizeof(header) + payload_len;
 
-    darray_ensure(&conn->read_buffer, total_len);
+    char* data = darray_ensure(&conn->read_buffer, total_len);
+    memcpy(data, header, sizeof(header));
 
     const unsigned char* masking_key = &header[sizeof(header) - 4];
-    char* data = darray_get_data(conn->read_buffer);
-    memcpy(data, header, sizeof(header));
     data += sizeof(header);
 
     for (int i = 0; i < payload_len; i++)
@@ -378,65 +491,49 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    /*darray_clear(conn->write_buffer);*/
-    size_t before_len = darray_get_len(conn->write_buffer);
-    static char out_message[] = "Hello";
-    settings.write_max_frame_size = 3;
-    msg.type = PROTOCOL_MSG_TEXT;
-    msg.data = out_message;
-    msg.msg_len = sizeof(out_message) - 1;
-    r = protocol_write_msg(conn, &msg);
-
-    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
-    {
-        printf("WRITE MSG RESULT FAIL: %d\n", r);
-        exit(1);
-    }
-
-    size_t new_len = darray_get_len(conn->write_buffer) - before_len;
-    size_t total_msg_len = sizeof(TEST_SERVER_FRAG_1) +
-                        sizeof(TEST_SERVER_FRAG_2);
-    if (new_len != total_msg_len)
-    {
-        printf(
-            "WRITE MSG LEN WRONG %lu %lu\n",
-            total_msg_len,
-            darray_get_len(conn->write_buffer)
-        );
-        exit(1);
-    }
-
-    data = darray_get_data(conn->write_buffer);
-    data = &data[before_len];
-    if (memcmp(data, TEST_SERVER_FRAG_1, sizeof(TEST_SERVER_FRAG_1)) != 0)
-    {
-        printf("WRITE MSG MEMCMP FAIL FRAG 1\n");
-        exit(1);
-    }
-
-    if (
-        memcmp(
-            &data[sizeof(TEST_SERVER_FRAG_1)],
-            TEST_SERVER_FRAG_2,
-            sizeof(TEST_SERVER_FRAG_2)
-        ) != 0
-    )
-    {
-        printf("WRITE MSG MEMCMP FAIL FRAG 2\n");
-        exit(1);
-    }
+    test_frame_write(FALSE, conn, "TEST_SERVER_WRITE");
+    test_frame_write(TRUE, conn, "TEST_CLIENT_WRITE");
 
     protocol_destroy_conn(conn);
 
+    conn = protocol_create_conn(&settings, 256, test_random, NULL);
+    g_index = (uint32_t*)g_nonce;
+    hr = protocol_write_handshake_request(
+        conn,
+        RESOURCE_NAME,
+        TEST_PROTOCOLS,
+        TEST_EXTENSIONS,
+        extra_headers
+    );
+    if (hr != PROTOCOL_HANDSHAKE_SUCCESS)
+    {
+        printf("HANDSHAKE REQUEST FAILED: %d\n", hr);
+        exit(1);
+    }
+
+    darray_copy(&conn->info.buffer, conn->write_buffer);
+    if ((hr=protocol_read_handshake_request(conn)) !=
+            PROTOCOL_HANDSHAKE_SUCCESS)
+    {
+        printf("TEST WRITE_HANDSHAKE: FAIL, HANDSHAKE RETURN: %d\n", hr);
+        exit(1);
+    }
+
+    compare_headers(conn, "TEST WRITE_HANDSHAKE");
+
+    protocol_destroy_conn(conn);
+
+
     settings.write_max_frame_size = 1024;
-    conn = protocol_create_conn(&settings, 256);
+    conn = protocol_create_conn(&settings, 256, test_random, NULL);
     darray_clear(conn->info.buffer);
     darray_append(
         &conn->info.buffer,
         TEST_BROKEN_REQUEST_LINE,
         sizeof(TEST_BROKEN_REQUEST_LINE)
     );
-    if ((hr=protocol_read_handshake(conn)) == PROTOCOL_HANDSHAKE_SUCCESS)
+    if ((hr=protocol_read_handshake_request(conn))
+            == PROTOCOL_HANDSHAKE_SUCCESS)
     {
         printf("FAIL, HANDSHAKE RETURN WAS SUCCESS: %d\n", hr);
         exit(1);

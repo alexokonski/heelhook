@@ -155,6 +155,23 @@ int main(void)
     int x = arr_both[arr_both_size - 1];
     test_get_last(array, (void*)&x, sizeof(x), END_ARGS);
 
+    /* test create_copy */
+    cur_test = "create_copy";
+    darray* copy = darray_create_copy(array);
+    test_data(copy, arr_both, arr_both_size * sizeof(int), END_ARGS);
+    test_len(copy, arr_both_size, END_ARGS);
+    test_size_reserved(copy, 12, END_ARGS);
+
+    /* test copy */
+    cur_test = "copy";
+    darray* copy_arr = darray_create(sizeof(int), 555);
+    darray_copy(&copy_arr, array);
+    test_data(copy_arr, arr_both, arr_both_size * sizeof(int), END_ARGS);
+    test_len(copy_arr, arr_both_size, END_ARGS);
+    test_size_reserved(copy_arr, 12, END_ARGS);
+
     darray_destroy(array);
+    darray_destroy(copy);
+    darray_destroy(copy_arr);
     exit(0);
 }
