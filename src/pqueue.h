@@ -84,12 +84,13 @@ pqueue_elem_ref pqueue_insert(pqueue* q, pqueue_value data);
 pqueue_value pqueue_get_elem_data(pqueue* q, pqueue_elem_ref ref);
 
 /*
- * you've 'decreased' the 'value' of the element for PQUEUE_SORT_MIN pqueues,
- * or 'increased' the 'value' of the element for PQUEUE_SORT_MAX pqueues,
- * and you need to update the pqueue. If you 'decrease' in a PQUEUE_SORT_MAX 
- * or 'increase' in a PQUEUE_SORT_MIN pqueue, THE PQUEUE IS NOW INVALID AND 
- * BEHAVIOR IS UNDEFINED. The 'generic'implementation of 'HEAP-INCREASE-KEY' 
- * found in LCRS
+ * Almost the functional equivalent of doing:
+ *      pqueue_delete(q, ref);
+ *      pqueue_insert(q, data_for_ref);
+ *
+ * But obviously preserves the existing pqueue_elem_ref, and is done slightly
+ * more efficiently
+ *
  */
 void pqueue_update_element(pqueue* q, pqueue_elem_ref ref);
 

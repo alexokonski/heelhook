@@ -346,6 +346,18 @@ int main(int argc, char** argv)
     /* sleep for some msecs so the time events can be tested */
     usleep(800 * 1000);
 
+    for (unsigned int i = 0; i < hhcountof(TIME_EVENT_STATES); i++)
+    {
+        if (TIME_EVENT_STATES[i].last_fire_time_ms == 0)
+        {
+            printf(
+                "TIME EVENT STATE WITH 0 TIME: %" PRIi64 " ms event\n",
+                TIME_EVENT_STATES[i].freq_ms
+            );
+            exit(1);
+        }
+    }
+
     pthread_join(thread, NULL);
 
     exit(0);

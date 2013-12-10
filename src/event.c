@@ -336,7 +336,7 @@ static void event_process_all_events(event_loop* loop, int flags)
             if (pqueue_get_size(loop->time_events) == 0)
             {
                 /*
-                 * if it did, and et was the last event in the pqueue,
+                 * if it did, and it was the last event in the pqueue,
                  * we're done
                  */
                 break;
@@ -345,14 +345,10 @@ static void event_process_all_events(event_loop* loop, int flags)
             {
                 /*
                  * callback() did NOT remove this event from the pqueue...
+                 * update its time
                  */
-                pqueue_value val;
-                val.p_val = et;
-
-                /* take it out and put it back in for next time */
-                pqueue_pop(loop->time_events);
                 et->next_fire_time_ms = now + et->frequency_ms;
-                et->pqueue_ref = pqueue_insert(loop->time_events, val);
+                pqueue_update_element(loop->time_events, et->pqueue_ref);
             }
             else
             {

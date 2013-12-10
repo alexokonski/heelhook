@@ -53,13 +53,6 @@ struct pqueue
     darray* heap; /* parallel darray of type pqueue_elem* */
 };
 
-static void heap_insert(pqueue* q, pqueue_elem* elem)
-{
-    elem->heap_index = darray_get_len(q->heap);
-    darray_append(&q->heap, &elem, 1);
-    pqueue_update_element(q, elem);
-}
-
 static int pq_parent(int i)
 {
     return (i - 1) / 2;
@@ -131,6 +124,56 @@ static void heapify(pqueue* q, int i)
             break;
         }
     } while (1);
+}
+
+/*
+ * you've 'decreased' the 'value' of the element for PQUEUE_SORT_MIN pqueues,
+ * or 'increased' the 'value' of the element for PQUEUE_SORT_MAX pqueues,
+ * and now you need to re-heapify the pqueue.  The 'generic'
+ * implementation of 'HEAP-INCREASE-KEY' found in LCRS
+ */
+static void pqueue_resort_element(pqueue* q, pqueue_elem_ref ref)
+{
+    hhassert(ref->heap_index >= 0);
+    int i = ref->heap_index;
+    pqueue_elem** heap = darray_get_data(q->heap);
+    while (i > 0 &&
+           pq_compare(q, heap[pq_parent(i)]->data, heap[i]->data) < 0)
+    {
+        pqueue_elem* temp = heap[i];
+        heap[i] = heap[pq_parent(i)];
+        heap[i]->heap_index = i;
+        heap[pq_parent(i)] = temp;
+        heap[pq_parent(i)]->heap_index = pq_parent(i);
+        i = pq_parent(i);
+    }
+}
+
+static void pqueue_remove_element(pqueue* q, pqueue_elem_ref ref)
+{
+    pqueue_elem* elem = ref;
+    hhassert(elem->heap_index >= 0);
+    int heap_index = elem->heap_index;
+
+    elem->heap_index = -1;
+
+    /* fixup heap */
+    pqueue_elem** heap = darray_get_data(q->heap);
+    pqueue_elem** last = darray_get_last(q->heap);
+
+    heap[heap_index] = (*last);
+    heap[heap_index]->heap_index = heap_index;
+
+    darray_add_len(q->heap, -1);
+
+    heapify(q, heap_index);
+}
+
+static void heap_insert(pqueue* q, pqueue_elem* elem)
+{
+    elem->heap_index = darray_get_len(q->heap);
+    darray_append(&q->heap, &elem, 1);
+    pqueue_resort_element(q, elem);
 }
 
 #if 0
@@ -252,26 +295,21 @@ pqueue_value pqueue_get_elem_data(pqueue* q, pqueue_elem_ref ref)
 }
 
 /*
- * you've 'decreased' the 'value' of the element for PQUEUE_SORT_MIN pqueues,
- * or 'increased' the 'value' of the element for PQUEUE_SORT_MAX pqueues,
- * and now you need to re-heapify the pqueue.  The 'generic'
- * implementation of 'HEAP-INCREASE-KEY' found in LCRS
+ * Almost the functional equivalent of doing:
+ *      pqueue_delete(q, ref);
+ *      pqueue_insert(q, data_for_ref);
+ *
+ * But obviously preserves the existing pqueue_elem_ref, and is done slightly
+ * more efficiently
+ *
  */
 void pqueue_update_element(pqueue* q, pqueue_elem_ref ref)
 {
-    hhassert(ref->heap_index >= 0);
-    int i = ref->heap_index;
-    pqueue_elem** heap = darray_get_data(q->heap);
-    while (i > 0 &&
-           pq_compare(q, heap[pq_parent(i)]->data, heap[i]->data) < 0)
-    {
-        pqueue_elem* temp = heap[i];
-        heap[i] = heap[pq_parent(i)];
-        heap[i]->heap_index = i;
-        heap[pq_parent(i)] = temp;
-        heap[pq_parent(i)]->heap_index = pq_parent(i);
-        i = pq_parent(i);
-    }
+    /* take element out of heap */
+    pqueue_remove_element(q, ref);
+
+    /* put it back in */
+    heap_insert(q, ref);
 }
 
 /*
@@ -313,23 +351,12 @@ pqueue_value pqueue_pop(pqueue* q)
 void pqueue_delete(pqueue* q, pqueue_elem_ref ref)
 {
     pqueue_elem* elem = ref;
-    hhassert(elem->heap_index >= 0);
-    int heap_index = elem->heap_index;
 
-    /* remove elemnt from the list */
-    elem->heap_index = -1;
+    /* remove element from the list */
     INLIST_REMOVE(q, elem, next, prev, elem_head, elem_tail);
 
-    /* fixup heap */
-    pqueue_elem** heap = darray_get_data(q->heap);
-    pqueue_elem** last = darray_get_last(q->heap);
-
-    heap[heap_index] = (*last);
-    heap[heap_index]->heap_index = heap_index;
-
-    darray_add_len(q->heap, -1);
-
-    heapify(q, heap_index);
+    /* remove element from the heap */
+    pqueue_remove_element(q, ref);
 
     /* free memory */
     hhfree(elem);
