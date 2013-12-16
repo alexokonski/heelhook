@@ -22,12 +22,12 @@ static BOOL on_open(
     hhunused(subprotocol_out);
     hhunused(extensions_out);
     int num_protocols = server_get_num_client_subprotocols(conn);
-    printf("Got subprotocols [\n");
+    /*printf("Got subprotocols [\n");
     for (int i = 0; i < num_protocols; i++)
     {
         printf("    %s\n", server_get_client_subprotocol(conn, i));
     }
-    printf("]\n\n");
+    printf("]\n\n");*/
 
     return TRUE;
 }
@@ -40,14 +40,17 @@ static void on_close(
 )
 {
     hhunused(conn);
-    printf("Got close: (%d, %.*s)\n", code, (int)reason_len, reason);
+    /*printf("Got close: (%d, %.*s)\n", code, (int)reason_len, reason);*/
 }
 
 static void signal_handler(int sig)
 {
     hhunused(sig);
     /* signal server to stop */
-    server_stop(g_serv);
+    if (g_serv != NULL)
+    {
+        server_stop(g_serv);
+    }
 }
 
 int main(int argc, char** argv)
@@ -88,6 +91,8 @@ int main(int argc, char** argv)
 
     server_listen(g_serv);
 
+    server_destroy(g_serv);
+    g_serv = NULL;
     exit(0);
 }
 

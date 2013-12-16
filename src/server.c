@@ -255,7 +255,7 @@ static void deactivate_conn(server_conn* conn)
      */
     if (serv->stopping && serv->active_head == NULL)
     {
-        event_destroy_loop(serv->loop);
+        event_stop_loop(serv->loop);
     }
 }
 
@@ -491,10 +491,13 @@ static void read_client_handshake(server_conn* conn)
     /* initialize output params */
     int subprotocol_out = -1;
     int num_extensions = server_get_num_client_extensions(conn);
-    extensions_out = hhmalloc(num_extensions * sizeof(*extensions_out));
-    for (int i = 0; i < num_extensions; i++)
+    if (num_extensions > 0)
     {
-        extensions_out[i] = -1;
+        extensions_out = hhmalloc(num_extensions * sizeof(*extensions_out));
+        for (int i = 0; i < num_extensions; i++)
+        {
+            extensions_out[i] = -1;
+        }
     }
 
     /*
@@ -513,7 +516,7 @@ static void read_client_handshake(server_conn* conn)
     }
 
     char* subprotocol = NULL;
-    if (subprotocol_out >= 0 )
+    if (subprotocol_out >= 0)
     {
         server_get_client_subprotocol(
             conn,
@@ -521,7 +524,7 @@ static void read_client_handshake(server_conn* conn)
         );
     }
 
-    if (extensions_out[0] >= 0)
+    if (extensions_out != NULL && extensions_out[0] >= 0)
     {
         /* +1 for terminating NULL */
         extensions = hhmalloc((num_extensions + 1) * sizeof(*extensions));
@@ -551,8 +554,11 @@ static void read_client_handshake(server_conn* conn)
         goto reject_client;
     }
 
-    hhfree(extensions_out);
-    extensions_out = NULL;
+    if (extensions_out != NULL)
+    {
+        hhfree(extensions_out);
+        extensions_out = NULL;
+    }
 
     if (subprotocol != NULL)
     {
@@ -790,6 +796,19 @@ err_create:
     if (serv->loop != NULL) event_destroy_loop(serv->loop);
     hhfree(serv);
     return NULL;
+}
+
+void server_destroy(server* serv)
+{
+    event_destroy_loop(serv->loop);
+    int max_clients = serv->options.max_clients;
+    for (int i = 0; i < max_clients; i++)
+    {
+        deinit_conn(&serv->connections[i]);
+    }
+
+    hhfree(serv->connections);
+    hhfree(serv);
 }
 
 static server_result server_conn_send_pmsg(

@@ -107,6 +107,11 @@ typedef struct
  */
 server* server_create(config_options* options, server_callbacks* callbacks);
 
+/*
+ * destroy an instance of a server
+ */
+void server_destroy(server* serv);
+
 /* queue up a message to send on this connection */
 server_result server_conn_send_msg(server_conn* conn, server_msg* msg);
 

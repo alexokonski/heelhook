@@ -771,7 +771,13 @@ void protocol_reset_conn(protocol_conn* conn)
     for (int i = 0; i < num_headers; i++)
     {
         headers[i].name = NULL;
-        darray_clear(headers[i].values);
+        /*
+         * destroy here instead of clear.  If we just clear, we can
+         * end up leaking values because num_headers will change
+         * and the loop in protocol_destroy_conn won't free some values
+         */
+        darray_destroy(headers[i].values);
+        headers[i].values = NULL;
     }
 
     darray_clear(conn->info.headers);
