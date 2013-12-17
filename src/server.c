@@ -49,6 +49,7 @@
 
 #define SERVER_MAX_LOG_LENGTH 1024
 #define SERVER_HEADER_READ_LENGTH (1024 * 2)
+#define SERVER_MAX_READ_LENGTH (1024 * 64)
 #define SERVER_MAX_WRITE_LENGTH (1024 * 64)
 #define SERVER_LISTEN_BACKLOG 512
 #define SERVER_WATCHDOG_FREQ_MS 5
@@ -631,7 +632,10 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
     }
     else
     {
-        read_len = pconn->settings->read_max_msg_size;
+        read_len = hhmin(
+            pconn->settings->read_max_msg_size,
+            SERVER_MAX_READ_LENGTH
+        );
         read_buffer = &pconn->read_buffer;
     }
 
