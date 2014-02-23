@@ -235,12 +235,19 @@ static void mask_and_move_data(
      * mask_key_ptr... copy the key into another place
      */
     char mask_key[4];
-    memcpy(mask_key, mask_key_ptr, sizeof(mask_key));
+    if(mask_key_ptr != NULL)
+    {
+        memcpy(mask_key, mask_key_ptr, sizeof(mask_key));
+    }
 
     uint8_t* d = (uint8_t*)dest;
     for (size_t i = 0; i < len; i++)
     {
-        d[i] = src[i] ^ mask_key[mask_index++ % 4];
+        d[i] = src[i];
+        if (mask_key_ptr != NULL)
+        {
+            d[i] ^= mask_key[mask_index++ % 4];
+        }
         if (validate_utf8)
         {
             utf8_decode(state, codepoint, d[i]);
@@ -457,6 +464,7 @@ static void handle_violation(
 
 static protocol_result protocol_parse_frame_hdr(
     protocol_conn* conn,
+    BOOL expect_mask,
     size_t* pos_ptr
 )
 {
@@ -541,15 +549,17 @@ static protocol_result protocol_parse_frame_hdr(
 
     data++;
     unsigned char second = *data;
-    int is_masked = (second & 0x80);
+    int is_masked = ((second & 0x80) != 0);
 
     /* all client frames must be masked */
-    if (!is_masked)
+    if (is_masked != expect_mask)
     {
+        const char* msg = (expect_mask) ? "All client frames must be masked"
+                                        : "Server frames must not be masked";
         handle_violation(
             conn,
             HH_ERROR_PROTOCOL,
-            "All client frames must be masked"
+            msg
         );
         return PROTOCOL_RESULT_FAIL;
     }
@@ -604,8 +614,13 @@ static protocol_result protocol_parse_frame_hdr(
         return PROTOCOL_RESULT_CONTINUE;
     }
 
-    char* masking_key = data;
-    data += sizeof(uint32_t);
+    char* masking_key = NULL;
+
+    if (is_masked)
+    {
+        masking_key = data;
+        data += sizeof(uint32_t);
+    }
 
     protocol_offset_msg* msg = &conn->frag_msg;
     if (conn->settings->read_max_num_frames != -1 &&
@@ -640,7 +655,11 @@ static protocol_result protocol_parse_frame_hdr(
     hdr->msg_type = msg_type;
     hdr->payload_processed = 0;
     hdr->payload_len = payload_len;
-    memcpy(hdr->masking_key, masking_key, sizeof(hdr->masking_key));
+    if (masking_key != NULL)
+    {
+        memcpy(hdr->masking_key, masking_key, sizeof(hdr->masking_key));
+    }
+    hdr->masked = is_masked;
     hdr->fin = (fin != 0);
     pos += data - &raw_buffer[pos];
     hdr->data_start_pos = pos;
@@ -653,13 +672,12 @@ static protocol_result protocol_parse_frame_hdr(
 protocol_conn* protocol_create_conn(
     protocol_settings* settings,
     size_t init_buf_len,
-    random_func* rand_func,
     void* userdata
 )
 {
     protocol_conn* conn = hhmalloc(sizeof(*conn));
     if (conn == NULL || protocol_init_conn(conn, settings, init_buf_len,
-                            rand_func, userdata) < 0)
+                            userdata) < 0)
     {
         if (conn != NULL && conn->info.headers != NULL)
         {
@@ -691,7 +709,6 @@ int protocol_init_conn(
     protocol_conn* conn,
     protocol_settings* settings,
     size_t init_buf_len,
-    random_func* rand_func,
     void* userdata
 )
 {
@@ -715,7 +732,6 @@ int protocol_init_conn(
     conn->error_msg = NULL;
     conn->error_code = 0;
     conn->error_len = 0;
-    conn->rand_func = rand_func;
     conn->userdata = userdata;
 
     return 0;
@@ -774,7 +790,7 @@ void protocol_reset_conn(protocol_conn* conn)
         /*
          * destroy here instead of clear.  If we just clear, we can
          * end up leaking values because num_headers will change
-         * and the loop in protocol_destroy_conn won't free some values
+         * and the loop in protocol_deinit_conn won't free some values
          */
         darray_destroy(headers[i].values);
         headers[i].values = NULL;
@@ -1014,14 +1030,14 @@ protocol_handshake_result protocol_read_handshake_response(
 
 static size_t append_key_header(darray** array, protocol_conn* conn)
 {
-    hhassert(conn->rand_func != NULL);
+    hhassert(conn->settings->rand_func != NULL);
 
     /* generate random 16 byte value */
     char request_key[KEY_LEN];
     uint32_t* pos = (uint32_t*)request_key;
     for (unsigned int i = 0; i < (KEY_LEN / sizeof(uint32_t)); i++)
     {
-        (*pos) = conn->rand_func(conn);
+        (*pos) = conn->settings->rand_func(conn);
         pos++;
     }
 
@@ -1270,9 +1286,10 @@ const char* protocol_get_extension(protocol_conn* conn, int index)
  * conn->read_msg. read_msg will contain the read message if protocol_result
  * is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is untouched.
  */
-protocol_result protocol_read_msg(
+static protocol_result protocol_read_msg(
     protocol_conn* conn,
     size_t* start_pos,
+    BOOL expect_mask,
     protocol_msg* read_msg
 )
 {
@@ -1282,7 +1299,7 @@ protocol_result protocol_read_msg(
     size_t data_len = darray_get_len(conn->read_buffer) - pos;
     char* data_end = data + data_len;
 
-    protocol_result r = protocol_parse_frame_hdr(conn, &pos);
+    protocol_result r = protocol_parse_frame_hdr(conn, expect_mask, &pos);
     if (r != PROTOCOL_RESULT_FRAME_FINISHED)
     {
         return r;
@@ -1300,9 +1317,10 @@ protocol_result protocol_read_msg(
     BOOL frame_finished = FALSE;
     protocol_opcode opcode = hdr->opcode;
     protocol_msg_type msg_type = hdr->msg_type;
+    char* masking_key = (hdr->masked) ? hdr->masking_key : NULL;
 
     /*
-     * read we're going to process either the rest of the message,
+     * we're going to process either the rest of the message,
      * or an incomplete piece of the message
      */
     size_t len = hhmin(
@@ -1333,15 +1351,18 @@ protocol_result protocol_read_msg(
              * mask data in place, no need to move it,
              * since this is the first fragment
              */
-            mask_data(
-                data,
-                len,
-                hdr->masking_key,
-                hdr->payload_processed,
-                (msg->type == PROTOCOL_MSG_TEXT),
-                &conn->valid_state.state,
-                &conn->valid_state.codepoint
-            );
+            if (hdr->masked)
+            {
+                mask_data(
+                    data,
+                    len,
+                    masking_key,
+                    hdr->payload_processed,
+                    (msg->type == PROTOCOL_MSG_TEXT),
+                    &conn->valid_state.state,
+                    &conn->valid_state.codepoint
+                );
+            }
             hdr->payload_processed += len;
             msg->msg_len += len;
             pos += len;
@@ -1362,7 +1383,7 @@ protocol_result protocol_read_msg(
                 &raw_buffer[msg->start_pos + msg->msg_len],
                 data,
                 len,
-                hdr->masking_key,
+                masking_key,
                 hdr->payload_processed,
                 (msg->type == PROTOCOL_MSG_TEXT),
                 &conn->valid_state.state,
@@ -1377,6 +1398,7 @@ protocol_result protocol_read_msg(
             {
                 size_t end_pos = msg->start_pos + msg->msg_len;
                 char* frame_end = &raw_buffer[end_pos];
+
                 /*
                  * we just masked and moved the data from this frame in one
                  * step, now move the rest of the buffer
@@ -1432,7 +1454,7 @@ protocol_result protocol_read_msg(
                 &raw_buffer[msg->start_pos + msg->msg_len],
                 data,
                 len,
-                hdr->masking_key,
+                masking_key,
                 hdr->payload_processed,
                 (msg->type == PROTOCOL_MSG_TEXT),
                 &conn->valid_state.state,
@@ -1576,6 +1598,24 @@ protocol_result protocol_read_msg(
     }
 }
 
+protocol_result protocol_read_client_msg(
+    protocol_conn* conn,
+    size_t* start_pos,
+    protocol_msg* read_msg
+)
+{
+    return protocol_read_msg(conn, start_pos, TRUE, read_msg);
+}
+
+protocol_result protocol_read_server_msg(
+    protocol_conn* conn,
+    size_t* start_pos,
+    protocol_msg* read_msg
+)
+{
+    return protocol_read_msg(conn, start_pos, FALSE, read_msg);
+}
+
 static protocol_result protocol_write_msg(
     protocol_conn* conn,
     protocol_msg* write_msg,
@@ -1677,8 +1717,8 @@ static protocol_result protocol_write_msg(
         case PROTOCOL_ENDPOINT_SERVER:
             break;
         case PROTOCOL_ENDPOINT_CLIENT:
-            hhassert(conn->rand_func != NULL);
-            val = conn->rand_func(conn);
+            hhassert(conn->settings->rand_func != NULL);
+            val = conn->settings->rand_func(conn);
             hhassert(sizeof(val) == num_mask_bytes);
             memcpy(data, &val, num_mask_bytes);
             data += num_mask_bytes;

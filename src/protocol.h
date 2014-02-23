@@ -113,6 +113,7 @@ typedef struct
     size_t data_start_pos;
     char masking_key[4];
     BOOL fin;
+    BOOL masked;
 } protocol_frame_hdr;
 
 /* state needed across calls for ut8 validator */
@@ -137,6 +138,9 @@ typedef struct
     darray* buffer;  /* buffer that contains all headers and resource name */
 } protocol_handshake;
 
+typedef struct protocol_conn protocol_conn;
+typedef uint32_t (random_func)(struct protocol_conn* conn);
+
 /* settings for a connection */
 typedef struct
 {
@@ -153,15 +157,10 @@ typedef struct
     int64_t read_max_num_frames;
 
     /*
-     * whether or not this connection should fail by closing the tcp
-     * connection in the event of a protocol error, rather than a closing
-     * handshake
+     * random number generator for creating client frames
      */
-    BOOL fail_by_drop;
+    random_func* rand_func;
 } protocol_settings;
-
-typedef struct protocol_conn protocol_conn;
-typedef uint32_t (random_func)(struct protocol_conn* conn);
 
 /* represents the buffers/info for a websocket connection */
 struct protocol_conn
@@ -210,11 +209,6 @@ struct protocol_conn
     uint16_t error_code;
 
     /*
-     * random number generator for creating client frames
-     */
-    random_func* rand_func;
-
-    /*
      * arbitrary data to associate with this object
      */
     void* userdata;
@@ -227,7 +221,6 @@ struct protocol_conn
 protocol_conn* protocol_create_conn(
     protocol_settings* settings,
     size_t init_buf_len,
-    random_func* rand_func,
     void* userdata
 );
 
@@ -239,7 +232,6 @@ int protocol_init_conn(
     protocol_conn* conn,
     protocol_settings* settings,
     size_t init_buf_len,
-    random_func* rand_func,
     void* userdata
 );
 
@@ -340,13 +332,28 @@ int protocol_get_num_extensions(protocol_conn* conn);
 const char* protocol_get_extension(protocol_conn* conn, int index);
 
 /*
- * process a frame from the read buffer starting at start_pos into
- * conn->read_msg. read_msg will contain the read message if protocol_result
- * is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is untouched.
- * The data pointer in read_msg will be a pointer into conn->read_buffer,
- * and as such will NOT be valid after any changes to conn->read_buffer
+ * process a frame sent by a client from the read buffer starting at start_pos
+ * into conn->read_msg. read_msg will contain the read message if
+ * protocol_result is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is
+ * untouched.  The data pointer in read_msg will be a pointer into
+ * conn->read_buffer, and as such will NOT be valid after any changes to
+ * conn->read_buffer
  */
-protocol_result protocol_read_msg(
+protocol_result protocol_read_client_msg(
+    protocol_conn* conn,
+    size_t* start_pos,
+    protocol_msg* read_msg
+);
+
+/*
+ * process a frame sent by a server from the read buffer starting at start_pos
+ * into conn->read_msg. read_msg will contain the read message if
+ * protocol_result is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is
+ * untouched.  The data pointer in read_msg will be a pointer into
+ * conn->read_buffer, and as such will NOT be valid after any changes to
+ * conn->read_buffer
+ */
+protocol_result protocol_read_server_msg(
     protocol_conn* conn,
     size_t* start_pos,
     protocol_msg* read_msg

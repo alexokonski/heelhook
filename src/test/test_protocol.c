@@ -295,8 +295,9 @@ int main(int argc, char** argv)
     settings.write_max_frame_size = 1024;
     settings.read_max_msg_size = 65537;
     settings.read_max_num_frames = 1024;
+    settings.rand_func = test_random;
     protocol_conn* conn =
-        protocol_create_conn(&settings, 20, test_random, NULL);
+        protocol_create_conn(&settings, 20, NULL);
     darray_append(&conn->info.buffer, buffer, num_written);
     protocol_result r;
     protocol_handshake_result hr;
@@ -345,7 +346,7 @@ int main(int argc, char** argv)
 
     protocol_msg msg;
     size_t pos = 0;
-    r = protocol_read_msg(conn, &pos, &msg);
+    r = protocol_read_client_msg(conn, &pos, &msg);
 
     if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
@@ -388,7 +389,7 @@ int main(int argc, char** argv)
     );
     memset(&msg, 0, sizeof(msg));
     pos = 0;
-    r = protocol_read_msg(conn, &pos, &msg);
+    r = protocol_read_client_msg(conn, &pos, &msg);
 
     if (r != PROTOCOL_RESULT_FRAME_FINISHED)
     {
@@ -403,7 +404,7 @@ int main(int argc, char** argv)
         sizeof(TEST_CLIENT_FRAG_2)
     );
 
-    r = protocol_read_msg(conn, &start_pos, &msg);
+    r = protocol_read_client_msg(conn, &start_pos, &msg);
 
     if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
@@ -465,7 +466,7 @@ int main(int argc, char** argv)
 
     memset(&msg, 0, sizeof(msg));
     pos = 0;
-    r = protocol_read_msg(conn, &pos, &msg);
+    r = protocol_read_client_msg(conn, &pos, &msg);
 
     if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
@@ -496,7 +497,7 @@ int main(int argc, char** argv)
 
     protocol_destroy_conn(conn);
 
-    conn = protocol_create_conn(&settings, 256, test_random, NULL);
+    conn = protocol_create_conn(&settings, 256, NULL);
     g_index = (uint32_t*)g_nonce;
     hr = protocol_write_handshake_request(
         conn,
@@ -525,7 +526,7 @@ int main(int argc, char** argv)
 
 
     settings.write_max_frame_size = 1024;
-    conn = protocol_create_conn(&settings, 256, test_random, NULL);
+    conn = protocol_create_conn(&settings, 256, NULL);
     darray_clear(conn->info.buffer);
     darray_append(
         &conn->info.buffer,

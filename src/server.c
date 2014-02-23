@@ -29,9 +29,11 @@
  */
 
 #include "error_code.h"
+#include "endpoint.h"
 #include "event.h"
 #include "inlist.h"
 #include "hhassert.h"
+#include "hhlog.h"
 #include "hhmemory.h"
 #include "protocol.h"
 #include "server.h"
@@ -57,13 +59,7 @@
 struct server_conn
 {
     int fd;
-    BOOL close_received;
-    BOOL close_sent;
-    BOOL close_send_pending;
-    BOOL should_fail;
-    size_t write_pos;
-    size_t read_pos;
-    protocol_conn pconn;
+    endpoint endp;
     server* serv;
     server_conn* next;
     server_conn* prev;
@@ -80,113 +76,64 @@ struct server
     server_conn* free_head;
     server_conn* free_tail;
     event_loop* loop;
+    config_server_options options;
     server_callbacks callbacks;
-    config_options options;
 };
 
-static server_result server_conn_send_pmsg(
-    server_conn* conn,
-    protocol_msg* pmsg
+static void write_to_client_callback(event_loop* loop, int fd, void* data);
+
+static BOOL server_on_open_callback(
+    endpoint* conn,
+    protocol_conn* proto_conn,
+    void* userdata
 );
 
-static void server_log(
-    config_options* options,
-    int level,
-    const char* format,
-    ...
-)
+static void server_on_message_callback(
+    endpoint* conn,
+    endpoint_msg* msg,
+    void* userdata
+);
+
+static void server_on_ping_callback(
+    endpoint* conn_info,
+    char* payload,
+    int payload_len,
+    void* userdata
+);
+
+static void server_on_close_callback(
+    endpoint* conn_info,
+    int code,
+    const char* reason,
+    int reason_len,
+    void* userdata
+);
+
+static endpoint_callbacks g_endpoint_cbs =
 {
-    if (level < options->loglevel)
-    {
-        return;
-    }
-
-    FILE* fp = stdout;
-    if (options->logfilepath != NULL)
-    {
-        fp = fopen(options->logfilepath, "a");
-        if (fp == NULL) return;
-    }
-
-    char buffer[SERVER_MAX_LOG_LENGTH];
-    va_list list;
-
-    va_start(list, format);
-    vsnprintf(buffer, sizeof(buffer), format, list);
-    va_end(list);
-
-    struct timeval tv;
-    char time_buffer[64];
-    gettimeofday(&tv, NULL);
-    int num_written = strftime(
-        time_buffer,
-        sizeof(time_buffer),
-        "%d %b %H:%M:%S.",
-        localtime(&tv.tv_sec)
-    );
-    snprintf(
-        time_buffer + num_written,
-        sizeof(time_buffer) - num_written,
-        "%03d",
-        (int)tv.tv_usec / 1000
-    );
-
-    char* level_str = NULL;
-    switch(level)
-    {
-        case CONFIG_LOG_LEVEL_DEBUG:
-            level_str = CONFIG_LOG_LEVEL_DEBUG_STR;
-            break;
-
-        case CONFIG_LOG_LEVEL_WARN:
-            level_str = CONFIG_LOG_LEVEL_WARN_STR;
-            break;
-
-        case CONFIG_LOG_LEVEL_ERROR:
-            level_str = CONFIG_LOG_LEVEL_ERROR_STR;
-            break;
-
-        default:
-            break;
-    }
-
-    if (level_str != NULL)
-    {
-        fprintf(fp, "%s %s %s\n", time_buffer, level_str, buffer);
-    }
-    else
-    {
-        fprintf(fp, "%s %d %s\n", time_buffer, level, buffer);
-    }
-
-    fflush(fp);
-    if (options->logfilepath != NULL) fclose(fp);
-}
+    .on_open_callback = server_on_open_callback,
+    .on_message_callback = server_on_message_callback,
+    .on_ping_callback = server_on_ping_callback,
+    .on_close_callback = server_on_close_callback
+};
 
 static int init_conn(server_conn* conn, server* serv)
 {
-    int r = protocol_init_conn(
-        &conn->pconn,
-        &serv->options.conn_settings,
-        serv->options.protocol_buf_init_len,
-        NULL,
-        NULL
-    );
     conn->serv = serv;
-    conn->write_pos = 0;
-    conn->read_pos = 0;
-    conn->close_received = FALSE;
-    conn->close_sent = FALSE;
-    conn->close_send_pending = FALSE;
-    conn->should_fail = FALSE;
+    int r = endpoint_init(
+        &conn->endp,
+        ENDPOINT_SERVER,
+        &serv->options.endp_settings,
+        &g_endpoint_cbs,
+        conn
+    );
 
-    /*return 0;*/
     return r;
 }
 
 static void deinit_conn(server_conn* conn)
 {
-    protocol_deinit_conn(&conn->pconn);
+    endpoint_deinit(&conn->endp);
 }
 
 static server_conn* activate_conn(server* serv, int client_fd)
@@ -202,36 +149,59 @@ static server_conn* activate_conn(server* serv, int client_fd)
     INLIST_APPEND(serv, conn, next, prev, active_head, active_tail);
 
     conn->fd = client_fd;
-    conn->write_pos = 0;
-    conn->read_pos = 0;
-    conn->close_received = FALSE;
-    conn->close_sent = FALSE;
-    conn->close_send_pending = FALSE;
-    conn->should_fail = FALSE;
-
-    /*protocol_init_conn(
-        &conn->pconn,
-        &serv->options.conn_settings,
-        serv->options.protocol_buf_init_len
-    );*/
-
-    protocol_reset_conn(&conn->pconn);
+    endpoint_reset(&conn->endp);
 
     return conn;
 }
 
-static void deactivate_conn(server_conn* conn)
+static event_result queue_write(server_conn* conn)
 {
+    /* queue up writing the handshake response back */
+    event_result er = event_add_io_event(
+        conn->serv->loop,
+        conn->fd,
+        EVENT_WRITEABLE,
+        write_to_client_callback,
+        conn
+    );
+
+    return er;
+}
+
+static void server_on_ping_callback(
+    endpoint* conn_info,
+    char* payload,
+    int payload_len,
+    void* userdata
+)
+{
+    hhunused(conn_info);
+
+    server_conn* conn = userdata;
+    server* serv = conn->serv;
+
+    if (serv->callbacks.on_ping_callback != NULL)
+    {
+        serv->callbacks.on_ping_callback(conn, payload, payload_len);
+    }
+}
+
+static void server_on_close_callback(
+    endpoint* conn_info,
+    int code,
+    const char* reason,
+    int reason_len,
+    void* userdata
+)
+{
+    hhunused(conn_info);
+
+    server_conn* conn = userdata;
     server* serv = conn->serv;
 
     if (serv->callbacks.on_close_callback != NULL)
     {
-        serv->callbacks.on_close_callback(
-            conn,
-            conn->pconn.error_code,
-            conn->pconn.error_msg,
-            conn->pconn.error_len
-        );
+        serv->callbacks.on_close_callback(conn, code, reason, reason_len);
     }
 
     /* take this client out of the event loop */
@@ -263,231 +233,39 @@ static void deactivate_conn(server_conn* conn)
 static void write_to_client_callback(event_loop* loop, int fd, void* data)
 {
     server_conn* conn = data;
-    protocol_conn* pconn = &conn->pconn;
 
-    char* out_buf = darray_get_data(pconn->write_buffer);
-    size_t buf_len = darray_get_len(pconn->write_buffer);
-    ssize_t num_written = 0;
-    ssize_t total_written = 0;
-
-    while (conn->write_pos < buf_len)
+    endpoint_write_result r = write_to_endpoint(&conn->endp, fd);
+    switch (r)
     {
-        num_written = write(
-            fd,
-            &out_buf[conn->write_pos],
-            buf_len - conn->write_pos
-        );
-        if (num_written <= 0) break;
-
-        if (num_written > 0)
-        {
-            /*server_log(
-                &conn->serv->options,
-                CONFIG_LOG_LEVEL_DEBUG,
-                "WROTE %lu bytes",
-                buf_len - conn->write_pos
-            );*/
-        }
-        conn->write_pos += num_written;
-        total_written += num_written;
-
-        /* don't want to block for too long here writing stuff... */
-        if (total_written >= SERVER_MAX_WRITE_LENGTH) break;
-    }
-
-    if (num_written == -1)
-    {
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_WARN,
-            "Error writing to client. fd: %d, error: %s",
-            fd,
-            strerror(errno)
-        );
-        deactivate_conn(conn);
-    }
-    else if (conn->write_pos == buf_len)
-    {
-        if (conn->close_send_pending) conn->close_sent = TRUE;
-
-        /* if (conn->close_received && conn->close_sent) */
-        if (conn->close_sent && (conn->should_fail || conn->close_received))
-        {
-            /*
-             * if we just sent a close message and we've received one already
-             * the websocket connection is fully closed and we're done
-             */
-            deactivate_conn(conn);
-        }
-        else
-        {
-            /*
-             * we've sent everything on our write buffer, clean up
-             * and get rid of the write callback
-             */
-            darray_clear(pconn->write_buffer);
-            conn->write_pos = 0;
-            event_delete_io_event(loop, fd, EVENT_WRITEABLE);
-
-            /*
-             * if we're in the write handshake state, we just wrote
-             * the handshake and we're now connected
-             */
-            /*if (conn->pconn.state == PROTOCOL_STATE_WRITE_HANDSHAKE)
-            {
-                conn->pconn.state = PROTOCOL_STATE_CONNECTED;
-            }
-            */
-        }
-    }
-
-    if (pconn->settings->read_max_msg_size > 0 &&
-        darray_get_len(pconn->write_buffer) >
-        (uint64_t)pconn->settings->read_max_msg_size)
-    {
+    case ENDPOINT_WRITE_CONTINUE:
+        break;
+    case ENDPOINT_WRITE_DONE:
         /*
-         * don't let the write buffer get above the max the read buffer len
+         * done writing to the client for now, don't call this again until
+         * there's more data to be sent
          */
-        darray_slice(pconn->write_buffer, conn->write_pos, -1);
-        conn->write_pos = 0;
+        event_delete_io_event(loop, fd, EVENT_WRITEABLE);
+        break;
+    case ENDPOINT_WRITE_ERROR:
+    case ENDPOINT_WRITE_CLOSED:
+        /* proper callback will have been called */
+        break;
     }
 }
 
-static void parse_client_messages(server_conn* conn)
+static BOOL server_on_open_callback(
+    endpoint* conn_info,
+    protocol_conn* proto_conn,
+    void* userdata
+)
 {
-    protocol_result r;
-    protocol_msg msg;
-    server_msg smsg;
-    do
-    {
-        r = protocol_read_msg(&conn->pconn, &conn->read_pos, &msg);
+    hhunused(conn_info);
+    hhunused(proto_conn);
 
-        BOOL is_text = FALSE;
-        switch (r)
-        {
-        case PROTOCOL_RESULT_MESSAGE_FINISHED:
-            switch (msg.type)
-            {
-            case PROTOCOL_MSG_NONE:
-                hhassert(0);
-                break;
-            case PROTOCOL_MSG_TEXT:
-                is_text = TRUE; /* fallthru */
-            case PROTOCOL_MSG_BINARY:
-                smsg.data = msg.data;
-                smsg.msg_len = msg.msg_len;
-                smsg.is_text = is_text;
-                if (conn->serv->callbacks.on_message_callback != NULL)
-                {
-                    conn->serv->callbacks.on_message_callback(
-                        conn,
-                        &smsg
-                    );
-                }
-                break;
-            case PROTOCOL_MSG_CLOSE:
-                if (conn->close_sent)
-                {
-                    deactivate_conn(conn);
-                    return;
-                }
-                else
-                {
-                    if (msg.msg_len >= (int)sizeof(uint16_t))
-                    {
-                        uint16_t code = *((uint16_t*)msg.data);
-                        conn->pconn.error_code = hh_ntohs(code);
-
-                        conn->pconn.error_msg =
-                            (msg.data != NULL)
-                                ? (msg.data + sizeof(uint16_t))
-                                : NULL;
-                        conn->pconn.error_len =
-                            msg.msg_len - sizeof(uint16_t);
-                    }
-                    server_conn_send_pmsg(conn, &msg);
-                    conn->close_send_pending = TRUE;
-                    conn->close_received = TRUE;
-                }
-                break;
-            case PROTOCOL_MSG_PING:
-                if (conn->serv->callbacks.on_ping_callback != NULL)
-                {
-                    conn->serv->callbacks.on_ping_callback(
-                        conn,
-                        msg.data,
-                        msg.msg_len
-                    );
-                }
-                msg.type = PROTOCOL_MSG_PONG;
-                server_conn_send_pmsg(conn, &msg);
-                break;
-            case PROTOCOL_MSG_PONG:
-                break;
-            }
-            break;
-        case PROTOCOL_RESULT_CONTINUE:
-        case PROTOCOL_RESULT_FRAME_FINISHED:
-            /* we're still reading this message */
-            break;
-        case PROTOCOL_RESULT_FAIL:
-            if (!conn->close_send_pending)
-            {
-                conn->should_fail = TRUE;
-                server_conn_close(
-                    conn,
-                    conn->pconn.error_code,
-                    conn->pconn.error_msg,
-                    conn->pconn.error_len
-                );
-                return;
-            }
-            break;
-        }
-    } while (r != PROTOCOL_RESULT_CONTINUE &&
-             conn->read_pos < darray_get_len(conn->pconn.read_buffer));
-
-    /*
-     * we just finished parsing a data message.  we don't need the data
-     * for it anymore, so slice it off the buffer
-     */
-    if (r == PROTOCOL_RESULT_MESSAGE_FINISHED && protocol_is_data(msg.type))
-    {
-        darray_slice(conn->pconn.read_buffer, conn->read_pos, -1);
-        conn->read_pos = darray_get_len(conn->pconn.read_buffer);
-    }
-}
-
-static void read_client_handshake(server_conn* conn)
-{
-    protocol_handshake_result hr =
-        protocol_read_handshake_request(&conn->pconn);
+    server_conn* conn = userdata;
     server* serv = conn->serv;
     int* extensions_out = NULL;
     const char** extensions = NULL;
-
-    switch (hr)
-    {
-    case PROTOCOL_HANDSHAKE_SUCCESS:
-        break;
-    case PROTOCOL_HANDSHAKE_CONTINUE:
-        /*
-         * apparently we didn't read the whole thing...
-         * keep waiting
-         */
-        return;
-    case PROTOCOL_HANDSHAKE_FAIL:
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_WARN,
-            "Read invalid handshake. fd: %d",
-            conn->fd
-        );
-        goto reject_client;
-    default:
-        hhassert(0);
-        goto reject_client;
-    }
 
     /* initialize output params */
     int subprotocol_out = -1;
@@ -541,17 +319,13 @@ static void read_client_handshake(server_conn* conn)
         extensions[e] = NULL;
     }
 
-    if ((hr=protocol_write_handshake_response(
-                    &conn->pconn,subprotocol,extensions)) !=
-            PROTOCOL_HANDSHAKE_SUCCESS)
+    endpoint_result r = endpoint_send_handshake_response(
+            &conn->endp,
+            subprotocol,
+            extensions
+    );
+    if (r != ENDPOINT_RESULT_SUCCESS)
     {
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_WARN,
-            "Error writing handshake. fd: %d, err: %d",
-            conn->fd,
-            hr
-        );
         goto reject_client;
     }
 
@@ -573,129 +347,72 @@ static void read_client_handshake(server_conn* conn)
         extensions = NULL;
     }
 
-    /* queue up writing the handshake response back */
-    event_result er = event_add_io_event(
-        conn->serv->loop,
-        conn->fd,
-        EVENT_WRITEABLE,
-        write_to_client_callback,
-        conn
-    );
-
+    event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_ERROR,
-            "write_handshake event loop error: %d!",
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
+            "write_handshake event loop error: %d",
             er
         );
         goto reject_client;
     }
 
-    return;
+    return TRUE;
+
 reject_client:
     if (extensions_out != NULL) hhfree(extensions_out);
     if (subprotocol != NULL) hhfree(subprotocol);
     if (extensions != NULL) hhfree(extensions);
-    deactivate_conn(conn);
-    return;
+    return FALSE;
+}
+
+static void server_on_message_callback(
+    endpoint* conn_info,
+    endpoint_msg* msg,
+    void* userdata
+)
+{
+    hhunused(conn_info);
+
+    server_conn* conn = userdata;
+    server* serv = conn->serv;
+
+    if (serv->callbacks.on_message_callback != NULL)
+    {
+        serv->callbacks.on_message_callback(conn, msg);
+    }
 }
 
 static void read_from_client_callback(event_loop* loop, int fd, void* data)
 {
     hhunused(loop);
-
     server_conn* conn = data;
-    protocol_conn* pconn = &conn->pconn;
 
-    /*
-     * we're trying to close the connection and we already heard the client
-     * agrees... don't read anything more
-     */
-    /*if (conn->close_send_pending && conn->close_received)*/
-    if (conn->close_received)
+    event_result er;
+    endpoint_read_result r = read_from_endpoint(&conn->endp, fd);
+    switch (r)
     {
-        return;
-    }
-
-    /*
-     * figure out which buffer to read into.  We have a separate buffer for
-     * handshake info we want to keep around for the duration of the connection
-     */
-    size_t read_len;
-    darray** read_buffer;
-    if (pconn->state == PROTOCOL_STATE_READ_HANDSHAKE)
-    {
-        read_len = SERVER_HEADER_READ_LENGTH;
-        read_buffer = &pconn->info.buffer;
-    }
-    else
-    {
-        read_len = hhmin(
-            pconn->settings->read_max_msg_size,
-            SERVER_MAX_READ_LENGTH
-        );
-        read_buffer = &pconn->read_buffer;
-    }
-
-    ssize_t num_read = 0;
-    int end_pos = darray_get_len((*read_buffer));
-
-    char* buf = darray_ensure(read_buffer, read_len);
-    buf = &buf[end_pos];
-
-    num_read = read(fd, buf, read_len);
-
-    if (num_read == -1)
-    {
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_WARN,
-            "Error reading from client. fd: %d, error: %s",
-            fd,
-            strerror(errno)
-        );
-        deactivate_conn(conn);
-        return;
-    }
-    else if (num_read == 0)
-    {
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_WARN,
-            "Client closed connection. fd: %d",
-            fd
-        );
-        deactivate_conn(conn);
-        return;
-    }
-    /* else ... */
-
-    darray_add_len((*read_buffer), num_read);
-
-    switch (pconn->state)
-    {
-    case PROTOCOL_STATE_READ_HANDSHAKE:
-        read_client_handshake(conn);
+    case ENDPOINT_READ_SUCCESS:
         break;
-    case PROTOCOL_STATE_WRITE_HANDSHAKE:
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_WARN,
-            "client tried to send something before handshake was written: %d",
-            fd
-        );
-        deactivate_conn(conn);
+    case ENDPOINT_READ_SUCCESS_WROTE_DATA:
+        er = queue_write(conn);
+        if (er != EVENT_RESULT_SUCCESS)
+        {
+            hhlog_log(
+                HHLOG_LEVEL_ERROR,
+                "send_msg event loop error: %d",
+                er
+            );
+        }
         break;
-    case PROTOCOL_STATE_CONNECTED:
-        /*server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_DEBUG,
-            "read %lu msg bytes",
-            num_read
-        );*/
-        parse_client_messages(conn);
+    case ENDPOINT_READ_ERROR:
+    case ENDPOINT_READ_CLOSED:
+        /*
+         * errors will have been logged and handled properly by on_close
+         * callback
+         */
+        event_delete_io_event(loop, fd, EVENT_READABLE);
         break;
     }
 }
@@ -709,9 +426,8 @@ static void accept_callback(event_loop* loop, int fd, void* data)
 
     if (client_fd == -1)
     {
-        server_log(
-            &serv->options,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "-1 fd when accepting socket, fd: %d",
             fd
         );
@@ -721,12 +437,12 @@ static void accept_callback(event_loop* loop, int fd, void* data)
     server_conn* conn = activate_conn(serv, client_fd);
     if (conn == NULL)
     {
-        server_log(
-            &serv->options,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "Server at max client capacity (%d)",
             serv->options.max_clients
         );
+        close(client_fd);
         return;
     }
 
@@ -740,9 +456,8 @@ static void accept_callback(event_loop* loop, int fd, void* data)
 
     if (r != EVENT_RESULT_SUCCESS)
     {
-        server_log(
-            &serv->options,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "add client to event loop error: %d",
             r
         );
@@ -750,7 +465,10 @@ static void accept_callback(event_loop* loop, int fd, void* data)
     }
 }
 
-server* server_create(config_options* options, server_callbacks* callbacks)
+server* server_create(
+    config_server_options* options,
+    server_callbacks* callbacks
+)
 {
     int i = 0;
     server* serv = hhmalloc(sizeof(*serv));
@@ -815,51 +533,6 @@ void server_destroy(server* serv)
     hhfree(serv);
 }
 
-static server_result server_conn_send_pmsg(
-    server_conn* conn,
-    protocol_msg* pmsg
-)
-{
-    if (conn->close_send_pending)
-    {
-        return SERVER_RESULT_SUCCESS;
-    }
-
-    protocol_result pr;
-    if ((pr = protocol_write_server_msg(&conn->pconn, pmsg)) !=
-            PROTOCOL_RESULT_MESSAGE_FINISHED)
-    {
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_ERROR,
-            "protocol_write_server_msg error: %d",
-            pr
-        );
-        return SERVER_RESULT_FAIL;
-    }
-
-    event_result r = event_add_io_event(
-        conn->serv->loop,
-        conn->fd,
-        EVENT_WRITEABLE,
-        write_to_client_callback,
-        conn
-    );
-
-    if(r != EVENT_RESULT_SUCCESS)
-    {
-        server_log(
-            &conn->serv->options,
-            CONFIG_LOG_LEVEL_ERROR,
-            "send_msg event loop error: %d",
-            r
-        );
-        return SERVER_RESULT_FAIL;
-    }
-
-    return SERVER_RESULT_SUCCESS;
-}
-
 static void server_teardown(server* serv)
 {
     /* stop listening for new connections */
@@ -869,7 +542,7 @@ static void server_teardown(server* serv)
         EVENT_READABLE | EVENT_WRITEABLE
     );
 
-    /* close the socket */
+    /* stop accepting connections to the server */
     close(serv->fd);
 
     /*
@@ -912,45 +585,83 @@ static void stop_watchdog(event_loop* loop, event_time_id id, void* data)
     }
 }
 
-/* queue up a message to send on this connection */
-server_result server_conn_send_msg(server_conn* conn, server_msg* msg)
+static server_result endpoint_result_to_server_result(endpoint_result r)
 {
-    protocol_msg pmsg;
-    pmsg.data = msg->data;
-    pmsg.msg_len = msg->msg_len;
-    pmsg.type = (msg->is_text) ? PROTOCOL_MSG_TEXT : PROTOCOL_MSG_BINARY;
+    switch (r)
+    {
+    case ENDPOINT_RESULT_SUCCESS:
+        return SERVER_RESULT_SUCCESS;
+    case ENDPOINT_RESULT_FAIL:
+        return SERVER_RESULT_FAIL;
+    }
 
-    return server_conn_send_pmsg(conn, &pmsg);
+    hhassert(0);
+    return SERVER_RESULT_FAIL;
+}
+
+/* queue up a message to send on this connection */
+server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
+{
+    endpoint_result r = endpoint_send_msg(&conn->endp, msg);
+
+    event_result er = queue_write(conn);
+    if (er != EVENT_RESULT_SUCCESS)
+    {
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
+            "send_msg event loop error: %d",
+            er
+        );
+        return SERVER_RESULT_FAIL;
+    }
+
+    return endpoint_result_to_server_result(r);
 }
 
 /* send a ping with payload (NULL for no payload)*/
 server_result server_conn_send_ping(
     server_conn* conn,
     char* payload,
-    int64_t payload_len
+    int payload_len
 )
 {
-    protocol_msg pmsg;
-    pmsg.data = payload;
-    pmsg.msg_len = payload_len;
-    pmsg.type = PROTOCOL_MSG_PING;
+    endpoint_result r = endpoint_send_ping(&conn->endp, payload, payload_len);
 
-    return server_conn_send_pmsg(conn, &pmsg);
+    event_result er = queue_write(conn);
+    if (er != EVENT_RESULT_SUCCESS)
+    {
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
+            "send_ping event loop error: %d",
+            er
+        );
+        return SERVER_RESULT_FAIL;
+    }
+
+    return endpoint_result_to_server_result(r);
 }
 
 /* send a pong with payload (NULL for no payload)*/
 server_result server_conn_send_pong(
     server_conn* conn,
     char* payload,
-    int64_t payload_len
+    int payload_len
 )
 {
-    protocol_msg pmsg;
-    pmsg.data = payload;
-    pmsg.msg_len = payload_len;
-    pmsg.type = PROTOCOL_MSG_PONG;
+    endpoint_result r = endpoint_send_pong(&conn->endp, payload, payload_len);
 
-    return server_conn_send_pmsg(conn, &pmsg);
+    event_result er = queue_write(conn);
+    if (er != EVENT_RESULT_SUCCESS)
+    {
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
+            "send_pong event loop error: %d",
+            er
+        );
+        return SERVER_RESULT_FAIL;
+    }
+
+    return endpoint_result_to_server_result(r);
 }
 
 /*
@@ -964,42 +675,20 @@ server_result server_conn_close(
     int reason_len
 )
 {
-    protocol_msg msg;
-    size_t data_len = 0;
-    char* orig_data = NULL;
-    char* data = NULL;
-    uint16_t* code_data = NULL;
-    server_result r = SERVER_RESULT_SUCCESS;
+    endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
 
-    switch (conn->pconn.state)
+    event_result er = queue_write(conn);
+    if (er != EVENT_RESULT_SUCCESS)
     {
-    case PROTOCOL_STATE_READ_HANDSHAKE:
-    case PROTOCOL_STATE_WRITE_HANDSHAKE:
-        deactivate_conn(conn);
-        return r;
-
-    case PROTOCOL_STATE_CONNECTED:
-        data_len = sizeof(code) + reason_len;
-        orig_data = hhmalloc(data_len);
-        data = orig_data;
-        code_data = (uint16_t*)data;
-        *code_data = hh_htons(code);
-        data += sizeof(code);
-
-        /* purposely leave out terminator */
-        memcpy(data, reason, reason_len);
-
-        msg.type = PROTOCOL_MSG_CLOSE;
-        msg.data = orig_data;
-        msg.msg_len = data_len;
-        r = server_conn_send_pmsg(conn, &msg);
-        conn->close_send_pending = TRUE;
-
-        hhfree(orig_data);
-        break;
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
+            "close event loop error: %d",
+            er
+        );
+        return SERVER_RESULT_FAIL;
     }
 
-    return r;
+    return endpoint_result_to_server_result(r);
 }
 
 /*
@@ -1007,7 +696,7 @@ server_result server_conn_close(
  */
 int server_get_num_client_subprotocols(server_conn* conn)
 {
-    return protocol_get_num_subprotocols(&conn->pconn);
+    return protocol_get_num_subprotocols(&conn->endp.pconn);
 }
 
 /*
@@ -1015,7 +704,7 @@ int server_get_num_client_subprotocols(server_conn* conn)
  */
 const char* server_get_client_subprotocol(server_conn* conn, int index)
 {
-    return protocol_get_subprotocol(&conn->pconn, index);
+    return protocol_get_subprotocol(&conn->endp.pconn, index);
 }
 
 /*
@@ -1023,7 +712,7 @@ const char* server_get_client_subprotocol(server_conn* conn, int index)
  */
 int server_get_num_client_extensions(server_conn* conn)
 {
-    return protocol_get_num_extensions(&conn->pconn);
+    return protocol_get_num_extensions(&conn->endp.pconn);
 }
 
 /*
@@ -1031,7 +720,7 @@ int server_get_num_client_extensions(server_conn* conn)
  */
 const char* server_get_client_extension(server_conn* conn, int index)
 {
-    return protocol_get_extension(&conn->pconn, index);
+    return protocol_get_extension(&conn->endp.pconn, index);
 }
 
 /*
@@ -1048,14 +737,13 @@ void server_stop(server* serv)
  */
 server_result server_listen(server* serv)
 {
-    config_options* opt = &serv->options;
+    config_server_options* opt = &serv->options;
 
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1)
     {
-        server_log(
-            opt,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "failed to create socket: %s",
             strerror(errno)
         );
@@ -1071,9 +759,8 @@ server_result server_listen(server* serv)
     if (opt->bindaddr != NULL &&
         inet_aton(opt->bindaddr, &addr.sin_addr) != 0)
     {
-        server_log(
-            opt,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "invalid bind address: %s",
             opt->bindaddr
         );
@@ -1082,9 +769,8 @@ server_result server_listen(server* serv)
 
     if (bind(s, (struct sockaddr*)(&addr), sizeof(addr)) == -1)
     {
-        server_log(
-            opt,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "failed to bind socket: %s",
             strerror(errno)
         );
@@ -1093,9 +779,8 @@ server_result server_listen(server* serv)
 
     if (listen(s, SERVER_LISTEN_BACKLOG) == -1)
     {
-        server_log(
-            opt,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "failed to listen on socket: %s",
             strerror(errno)
         );
@@ -1112,9 +797,8 @@ server_result server_listen(server* serv)
 
     if (r != EVENT_RESULT_SUCCESS)
     {
-        server_log(
-            opt,
-            CONFIG_LOG_LEVEL_ERROR,
+        hhlog_log(
+            HHLOG_LEVEL_ERROR,
             "error adding accept callback to event loop: %d",
             r
         );

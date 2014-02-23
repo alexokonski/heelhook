@@ -31,19 +31,13 @@
 #ifndef __SERVER_H_
 #define __SERVER_H_
 
+#include "endpoint.h"
 #include "config.h"
-#include "protocol.h"
 #include "util.h"
 #include <stdint.h>
 
 typedef struct server server;
 typedef struct server_conn server_conn;
-typedef struct
-{
-    BOOL is_text;
-    char* data;
-    int64_t msg_len;
-} server_msg;
 
 /*
  * return false if you want to reject this client
@@ -62,11 +56,11 @@ typedef BOOL (server_on_open)(
     int* subprotocol_out,
     int* extensions_out
 );
-typedef void (server_on_message)(server_conn* conn, server_msg* msg);
+typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg);
 typedef void (server_on_ping)(
     server_conn* conn_info,
     char* payload,
-    int64_t payload_len
+    int payload_len
 );
 
 /* includes the close code and reason received from the client (if any) */
@@ -74,7 +68,7 @@ typedef void (server_on_close)(
     server_conn* conn_info,
     int code,
     const char* reason,
-    int64_t reason_len
+    int reason_len
 );
 
 typedef enum
@@ -105,7 +99,10 @@ typedef struct
  * create an instance of a 'server' options and callbacks must be valid
  * pointers until server_stop is called
  */
-server* server_create(config_options* options, server_callbacks* callbacks);
+server* server_create(
+    config_server_options* options,
+    server_callbacks* callbacks
+);
 
 /*
  * destroy an instance of a server
@@ -113,20 +110,20 @@ server* server_create(config_options* options, server_callbacks* callbacks);
 void server_destroy(server* serv);
 
 /* queue up a message to send on this connection */
-server_result server_conn_send_msg(server_conn* conn, server_msg* msg);
+server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg);
 
 /* send a ping with payload (NULL for no payload)*/
 server_result server_conn_send_ping(
     server_conn* conn,
     char* payload,
-    int64_t payload_len
+    int payload_len
 );
 
 /* send a pong with payload (NULL for no payload)*/
 server_result server_conn_send_pong(
     server_conn* conn,
     char* payload,
-    int64_t payload_len
+    int payload_len
 );
 
 /*

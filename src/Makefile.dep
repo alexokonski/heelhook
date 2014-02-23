@@ -11,17 +11,22 @@ test_protocol.o: test/test_protocol.c test/../protocol.h test/../darray.h \
  test/../util.h test/../util.h
 test_pqueue.o: test/test_pqueue.c test/../pqueue.h test/../util.h \
  test/../util.h test/../hhmemory.h
+hhlog.o: hhlog.c hhlog.h util.h
 event_epoll.o: event_epoll.c
 echoserver.o: servers/echoserver.c servers/../server.h \
- servers/../config.h servers/../protocol.h servers/../darray.h \
- servers/../util.h servers/../util.h
+ servers/../endpoint.h servers/../protocol.h servers/../darray.h \
+ servers/../util.h servers/../config.h servers/../hhlog.h \
+ servers/../util.h
 protocol.o: protocol.c base64/cencode.h error_code.h util.h hhassert.h \
  hhmemory.h protocol.h darray.h sha1/sha1.h
 pqueue.o: pqueue.c darray.h hhassert.h hhmemory.h inlist.h pqueue.h \
  util.h
 darray.o: darray.c darray.h hhassert.h hhmemory.h util.h
+endpoint.o: endpoint.c error_code.h util.h hhassert.h hhlog.h hhmemory.h \
+ protocol.h darray.h endpoint.h
 hhmemory.o: hhmemory.c
 sha1.o: sha1/sha1.c sha1/sha1.h
-server.o: server.c error_code.h util.h event.h inlist.h hhassert.h \
- hhmemory.h protocol.h darray.h server.h config.h
-event.o: event.c event.h util.h platform.h hhmemory.h event_epoll.c
+server.o: server.c error_code.h util.h endpoint.h protocol.h darray.h \
+ event.h inlist.h hhassert.h hhlog.h hhmemory.h server.h config.h
+event.o: event.c event.h util.h hhmemory.h platform.h pqueue.h \
+ event_epoll.c

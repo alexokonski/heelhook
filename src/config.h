@@ -28,30 +28,29 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "protocol.h"
+#ifndef __CONFIG_H_
+#define __CONFIG_H_
 
-#define CONFIG_LOG_LEVEL_DEBUG  0
-#define CONFIG_LOG_LEVEL_WARN   10
-#define CONFIG_LOG_LEVEL_ERROR  20
-
-#define CONFIG_LOG_LEVEL_DEBUG_STR "DEBUG"
-#define CONFIG_LOG_LEVEL_WARN_STR  "WARN"
-#define CONFIG_LOG_LEVEL_ERROR_STR "ERROR"
+#include "endpoint.h"
 
 typedef struct
 {
     char* bindaddr; /* addr to bind to, if NULL, all interfaces */
-    char* logfilepath; /* path to log file, NULL for stdout */
     int port; /* port the server will listen on */
-    size_t protocol_buf_init_len; /* initital length for read/write buffers */
+    endpoint_settings endp_settings; /* endpoint settings */
     int max_clients; /* max clients we allow connected */
-    protocol_settings conn_settings; /* settings for each connection */
-    int loglevel;
-} config_options;
+} config_server_options;
+
+typedef struct
+{
+    endpoint_settings endp_settings; /* endpoint settings */
+} config_client_options;
 
 /* Parse settings from config_str into options */
-void config_parse_from_string(
+/*void config_parse_from_string(
     const char* config_str,
     config_options* options
-);
+);*/
+
+#endif /* __CONFIG_H_ */
 

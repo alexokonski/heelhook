@@ -1,4 +1,5 @@
 #include "../server.h"
+#include "../hhlog.h"
 #include "../util.h"
 
 #include <inttypes.h>
@@ -8,7 +9,7 @@
 
 static server* g_serv = NULL;
 
-static void on_message_received(server_conn* conn, server_msg* msg)
+static void on_message_received(server_conn* conn, endpoint_msg* msg)
 {
     server_conn_send_msg(conn, msg);
 }
@@ -21,13 +22,14 @@ static BOOL on_open(
 {
     hhunused(subprotocol_out);
     hhunused(extensions_out);
+    hhunused(conn);
     int num_protocols = server_get_num_client_subprotocols(conn);
-    /*printf("Got subprotocols [\n");
+    printf("Got subprotocols [\n");
     for (int i = 0; i < num_protocols; i++)
     {
         printf("    %s\n", server_get_client_subprotocol(conn, i));
     }
-    printf("]\n\n");*/
+    printf("]\n\n");
 
     return TRUE;
 }
@@ -36,11 +38,14 @@ static void on_close(
     server_conn* conn,
     int code,
     const char* reason,
-    int64_t reason_len
+    int reason_len
 )
 {
     hhunused(conn);
-    /*printf("Got close: (%d, %.*s)\n", code, (int)reason_len, reason);*/
+    hhunused(code);
+    hhunused(reason);
+    hhunused(reason_len);
+    printf("Got close: (%d, %.*s)\n", code, (int)reason_len, reason);
 }
 
 static void signal_handler(int sig)
@@ -52,6 +57,14 @@ static void signal_handler(int sig)
         server_stop(g_serv);
     }
 }
+
+static hhlog_options g_log_options =
+{
+    .loglevel = HHLOG_LEVEL_DEBUG,
+    .syslogident = NULL,
+    .logfilepath = NULL,
+    .log_to_stdout = TRUE
+};
 
 int main(int argc, char** argv)
 {
@@ -69,16 +82,16 @@ int main(int argc, char** argv)
     sigaction(SIGTERM, &act, NULL);
     sigaction(SIGINT, &act, NULL);
 
-    config_options options;
+    config_server_options options;
     options.bindaddr = NULL;
-    options.logfilepath = NULL;
-    options.protocol_buf_init_len = 4 * 1024;
     options.max_clients = 1;
-    options.conn_settings.write_max_frame_size = 20 * 1024 * 1024;
-    options.conn_settings.read_max_msg_size = 20 * 1024 * 1024;
-    options.conn_settings.read_max_num_frames = 20 * 1024 * 1024;
-    options.conn_settings.fail_by_drop = TRUE;
-    options.loglevel = CONFIG_LOG_LEVEL_DEBUG;
+
+    options.endp_settings.protocol_buf_init_len = 4 * 1024;
+
+    protocol_settings* conn_settings = &options.endp_settings.conn_settings;
+    conn_settings->write_max_frame_size = 20 * 1024 * 1024;
+    conn_settings->read_max_msg_size = 20 * 1024 * 1024;
+    conn_settings->read_max_num_frames = 20 * 1024 * 1024;
     options.port = atoi(argv[1]);
 
     server_callbacks callbacks;
@@ -86,6 +99,8 @@ int main(int argc, char** argv)
     callbacks.on_message_callback = on_message_received;
     callbacks.on_ping_callback = NULL;
     callbacks.on_close_callback = on_close;
+
+    hhlog_set_options(&g_log_options);
 
     g_serv = server_create(&options, &callbacks);
 

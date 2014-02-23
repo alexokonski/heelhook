@@ -9,7 +9,7 @@ EXT_SYMBOL=
 FINAL_CFLAGS = $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(EXT_SYMBOL) $(CFLAGS)
 FINAL_LDFLAGS = $(LDFLAGS) -g -ggdb
 TEST_LIBS = -pthread
-HEELHOOK_OBJECTS = hhmemory.o event.o darray.o protocol.o sha1.o cencode.o util.o server.o error_code.o pqueue.o
+HEELHOOK_OBJECTS = hhmemory.o event.o darray.o protocol.o sha1.o cencode.o util.o server.o error_code.o pqueue.o endpoint.o hhlog.o
 
 .PHONY: all
 all: heelhook echoserver test
@@ -30,19 +30,19 @@ test: test_event test_darray test_protocol test_util test_pqueue
 	@echo
 	@(bash runtests.sh $^)
 
-test_event: test_event.o $(HEELHOOK_OBJECTS) 
+test_event: test_event.o event.o pqueue.o hhmemory.o util.o darray.o
 	$(CC) $(TEST_LIBS) -o $@ $^
 
-test_darray: test_darray.o $(HEELHOOK_OBJECTS)
+test_darray: test_darray.o darray.o hhmemory.o util.o
 	$(CC) $(TEST_LIBS) -o $@ $^
 
-test_protocol: test_protocol.o $(HEELHOOK_OBJECTS)
+test_protocol: test_protocol.o darray.o protocol.o error_code.o hhmemory.o util.o sha1.o cencode.o
 	$(CC) $(TEST_LIBS) -o $@ $^
 
-test_util: test_util.o $(HEELHOOK_OBJECTS)
+test_util: test_util.o util.o
 	$(CC) $(TEST_LIBS) -o $@ $^
 
-test_pqueue: test_pqueue.o $(HEELHOOK_OBJECTS)
+test_pqueue: test_pqueue.o pqueue.o darray.o hhmemory.o
 	$(CC) $(TEST_LIBS) -o $@ $^
 
 echoserver: echoserver.o $(HEELHOOK_OBJECTS)
