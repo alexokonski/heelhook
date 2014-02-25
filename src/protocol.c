@@ -184,7 +184,7 @@ static HH_INLINE uint32_t utf8_decode(
   return *state;
 }
 
-static BOOL is_valid_utf8(const char* str, int length)
+static HHBOOL is_valid_utf8(const char* str, int length)
 {
     uint32_t codepoint, state = 0;
     const uint8_t* s = (const uint8_t*)str;
@@ -202,7 +202,7 @@ static void mask_data(
     size_t len,
     char* mask_key,
     int mask_index,
-    BOOL validate_utf8,
+    HHBOOL validate_utf8,
     uint32_t* state,
     uint32_t* codepoint
 )
@@ -225,7 +225,7 @@ static void mask_and_move_data(
     size_t len,
     char* mask_key_ptr,
     int mask_index,
-    BOOL validate_utf8,
+    HHBOOL validate_utf8,
     uint32_t* state,
     uint32_t* codepoint
 )
@@ -464,7 +464,7 @@ static void handle_violation(
 
 static protocol_result protocol_parse_frame_hdr(
     protocol_conn* conn,
-    BOOL expect_mask,
+    HHBOOL expect_mask,
     size_t* pos_ptr
 )
 {
@@ -1289,7 +1289,7 @@ const char* protocol_get_extension(protocol_conn* conn, int index)
 static protocol_result protocol_read_msg(
     protocol_conn* conn,
     size_t* start_pos,
-    BOOL expect_mask,
+    HHBOOL expect_mask,
     protocol_msg* read_msg
 )
 {
@@ -1312,9 +1312,9 @@ static protocol_result protocol_read_msg(
      */
     data = &raw_buffer[pos];
 
-    BOOL fin = hdr->fin;
-    BOOL msg_finished = FALSE;
-    BOOL frame_finished = FALSE;
+    HHBOOL fin = hdr->fin;
+    HHBOOL msg_finished = HHFALSE;
+    HHBOOL frame_finished = HHFALSE;
     protocol_opcode opcode = hdr->opcode;
     protocol_msg_type msg_type = hdr->msg_type;
     char* masking_key = (hdr->masked) ? hdr->masking_key : NULL;
@@ -1371,7 +1371,7 @@ static protocol_result protocol_read_msg(
                 conn->valid_state.state != UTF8_REJECT)
             {
                 hdr->payload_len = -1;
-                frame_finished = TRUE;
+                frame_finished = HHTRUE;
             }
         }
         else
@@ -1417,7 +1417,7 @@ static protocol_result protocol_read_msg(
 
                 /* we just finished processing a frame... clear hdr */
                 hdr->payload_len = -1;
-                frame_finished = TRUE;
+                frame_finished = HHTRUE;
             }
         }
 
@@ -1507,7 +1507,7 @@ static protocol_result protocol_read_msg(
                 conn->valid_state.state = 0;
                 conn->valid_state.codepoint = 0;
 
-                msg_finished = TRUE;
+                msg_finished = HHTRUE;
             }
         }
         else
@@ -1540,7 +1540,7 @@ static protocol_result protocol_read_msg(
                 /* we just read a full message, reset the fragment counter */
                 conn->num_fragments_read = 0;
 
-                msg_finished = TRUE;
+                msg_finished = HHTRUE;
             }
         }
 
@@ -1604,7 +1604,7 @@ protocol_result protocol_read_client_msg(
     protocol_msg* read_msg
 )
 {
-    return protocol_read_msg(conn, start_pos, TRUE, read_msg);
+    return protocol_read_msg(conn, start_pos, HHTRUE, read_msg);
 }
 
 protocol_result protocol_read_server_msg(
@@ -1613,7 +1613,7 @@ protocol_result protocol_read_server_msg(
     protocol_msg* read_msg
 )
 {
-    return protocol_read_msg(conn, start_pos, FALSE, read_msg);
+    return protocol_read_msg(conn, start_pos, HHFALSE, read_msg);
 }
 
 static protocol_result protocol_write_msg(
@@ -1777,12 +1777,12 @@ BOOL protocol_is_data(protocol_msg_type msg_type)
         case PROTOCOL_MSG_CLOSE:
         case PROTOCOL_MSG_PING:
         case PROTOCOL_MSG_PONG:
-            return FALSE;
+            return HHFALSE;
         case PROTOCOL_MSG_TEXT:
         case PROTOCOL_MSG_BINARY:
-            return TRUE;
+            return HHTRUE;
         default:
-            return FALSE;
+            return HHFALSE;
     }
 }
 
@@ -1793,13 +1793,13 @@ BOOL protocol_is_control(protocol_msg_type msg_type)
         case PROTOCOL_MSG_NONE:
         case PROTOCOL_MSG_TEXT:
         case PROTOCOL_MSG_BINARY:
-            return FALSE;
+            return HHFALSE;
         case PROTOCOL_MSG_CLOSE:
         case PROTOCOL_MSG_PING:
         case PROTOCOL_MSG_PONG:
-            return TRUE;
+            return HHTRUE;
         default:
-            return FALSE;
+            return HHFALSE;
     }
 }
 

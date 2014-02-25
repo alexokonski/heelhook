@@ -67,7 +67,7 @@ struct server_conn
 
 struct server
 {
-    BOOL stopping;
+    HHBOOL stopping;
     event_time_id watchdog_id;
     int fd;
     server_conn* connections;
@@ -82,7 +82,7 @@ struct server
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data);
 
-static BOOL server_on_open_callback(
+static HHBOOL server_on_open_callback(
     endpoint* conn,
     protocol_conn* proto_conn,
     void* userdata
@@ -253,7 +253,7 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
     }
 }
 
-static BOOL server_on_open_callback(
+static HHBOOL server_on_open_callback(
     endpoint* conn_info,
     protocol_conn* proto_conn,
     void* userdata
@@ -358,13 +358,13 @@ static BOOL server_on_open_callback(
         goto reject_client;
     }
 
-    return TRUE;
+    return HHTRUE;
 
 reject_client:
     if (extensions_out != NULL) hhfree(extensions_out);
     if (subprotocol != NULL) hhfree(subprotocol);
     if (extensions != NULL) hhfree(extensions);
-    return FALSE;
+    return HHFALSE;
 }
 
 static void server_on_message_callback(
@@ -474,7 +474,7 @@ server* server_create(
     server* serv = hhmalloc(sizeof(*serv));
     if (serv == NULL) return NULL;
 
-    serv->stopping = FALSE;
+    serv->stopping = HHFALSE;
     serv->active_head = NULL;
     serv->active_tail = NULL;
     serv->free_head = NULL;
@@ -729,7 +729,7 @@ const char* server_get_client_extension(server_conn* conn, int index)
  */
 void server_stop(server* serv)
 {
-    serv->stopping = TRUE;
+    serv->stopping = HHTRUE;
 }
 
 /*

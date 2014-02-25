@@ -56,10 +56,10 @@ typedef struct
     size_t write_pos;
     size_t read_pos;
     protocol_conn pconn;
-    BOOL close_received;
-    BOOL close_sent;
-    BOOL close_send_pending;
-    BOOL should_fail;
+    HHBOOL close_received;
+    HHBOOL close_sent;
+    HHBOOL close_send_pending;
+    HHBOOL should_fail;
     void* userdata;
 } endpoint;
 
@@ -81,12 +81,12 @@ typedef enum
 
 typedef struct
 {
-    BOOL is_text;
+    HHBOOL is_text;
     char* data;
     int64_t msg_len;
 } endpoint_msg;
 
-typedef BOOL (endpoint_on_open)(
+typedef HHBOOL (endpoint_on_open)(
     endpoint* conn,
     protocol_conn* proto_conn,
     void* userdata

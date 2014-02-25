@@ -49,9 +49,9 @@ uint16_t hh_ntohs(uint16_t netshort);
 uint64_t hh_htonll(uint64_t hostlonglong);
 uint64_t hh_ntohll(uint64_t netlonglong);
 
-typedef char BOOL;
-#define TRUE  1
-#define FALSE 0
+typedef char HHBOOL;
+#define HHTRUE  1
+#define HHFALSE 0
 
 /* use this so we never inline in debug builds */
 #ifdef DEBUG

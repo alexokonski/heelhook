@@ -112,8 +112,8 @@ typedef struct
     int64_t payload_len; /* -1 means we're on a brand new frame */
     size_t data_start_pos;
     char masking_key[4];
-    BOOL fin;
-    BOOL masked;
+    HHBOOL fin;
+    HHBOOL masked;
 } protocol_frame_hdr;
 
 /* state needed across calls for ut8 validator */

@@ -14,7 +14,7 @@ static void on_message_received(server_conn* conn, endpoint_msg* msg)
     server_conn_send_msg(conn, msg);
 }
 
-static BOOL on_open(
+static HHBOOL on_open(
     server_conn* conn,
     int* subprotocol_out,
     int* extensions_out
@@ -31,7 +31,7 @@ static BOOL on_open(
     }
     printf("]\n\n");
 
-    return TRUE;
+    return HHTRUE;
 }
 
 static void on_close(

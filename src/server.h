@@ -51,7 +51,7 @@ typedef struct server_conn server_conn;
  *        length equal to server_get_num_extensions. Fill in starting from
  *        index 0. Set all to -1 or don't write to this to choose 0 extensions
  */
-typedef BOOL (server_on_open)(
+typedef HHBOOL (server_on_open)(
     server_conn* conn,
     int* subprotocol_out,
     int* extensions_out

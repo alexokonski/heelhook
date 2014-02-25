@@ -203,7 +203,7 @@ static void compare_headers(protocol_conn* conn, const char* test)
 }
 
 static void test_frame_write(
-    BOOL is_client,
+    HHBOOL is_client,
     protocol_conn* conn,
     const char* test_str
 )
@@ -492,8 +492,8 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    test_frame_write(FALSE, conn, "TEST_SERVER_WRITE");
-    test_frame_write(TRUE, conn, "TEST_CLIENT_WRITE");
+    test_frame_write(HHFALSE, conn, "TEST_SERVER_WRITE");
+    test_frame_write(HHTRUE, conn, "TEST_CLIENT_WRITE");
 
     protocol_destroy_conn(conn);
 

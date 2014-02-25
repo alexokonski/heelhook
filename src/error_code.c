@@ -37,8 +37,8 @@ BOOL is_error_valid(int err_code)
         (err_code >= 1012 && err_code <= 1015) ||
         (err_code >= 1016 && err_code <= 2999))
     {
-        return FALSE;
+        return HHFALSE;
     }
 
-    return TRUE;
+    return HHTRUE;
 }

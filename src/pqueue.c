@@ -177,7 +177,7 @@ static void heap_insert(pqueue* q, pqueue_elem* elem)
 }
 
 #if 0
-static BOOL heap_validate(pqueue* q)
+static HHBOOL heap_validate(pqueue* q)
 {
     pqueue_elem** heap = darray_get_data(q->heap);
 
@@ -190,7 +190,7 @@ static BOOL heap_validate(pqueue* q)
                 "INVALID HEAP_INDEX AT %d: %d\n",
                 (int)parent, heap[parent]->heap_index
             );
-            return FALSE;
+            return HHFALSE;
         }
 
         if (pq_compare(q, heap[parent]->data, heap[i]->data) < 0)
@@ -201,11 +201,11 @@ static BOOL heap_validate(pqueue* q)
                 parent, heap[parent]->data.i_val,
                 (int)i, heap[i]->data.i_val
             );
-            return FALSE;
+            return HHFALSE;
         }
     }
 
-    return TRUE;
+    return HHTRUE;
 }
 #else
 #define heap_validate(q)

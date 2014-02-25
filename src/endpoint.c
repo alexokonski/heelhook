@@ -119,7 +119,7 @@ endpoint_write_result write_to_endpoint(endpoint* conn, int fd)
     }
     else if (conn->write_pos == buf_len)
     {
-        if (conn->close_send_pending) conn->close_sent = TRUE;
+        if (conn->close_send_pending) conn->close_sent = HHTRUE;
 
         /* if (conn->close_received && conn->close_sent) */
         if (conn->close_sent && (conn->should_fail || conn->close_received))
@@ -182,7 +182,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
             break;
         }
 
-        BOOL is_text = FALSE;
+        HHBOOL is_text = HHFALSE;
         switch (r)
         {
         case PROTOCOL_RESULT_MESSAGE_FINISHED:
@@ -192,7 +192,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 hhassert(0);
                 break;
             case PROTOCOL_MSG_TEXT:
-                is_text = TRUE; /* fallthru */
+                is_text = HHTRUE; /* fallthru */
             case PROTOCOL_MSG_BINARY:
                 smsg.data = msg.data;
                 smsg.msg_len = msg.msg_len;
@@ -228,8 +228,8 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                     }
                     endpoint_send_pmsg(conn, &msg);
                     pr = PARSE_CONTINUE_WROTE_DATA;
-                    conn->close_send_pending = TRUE;
-                    conn->close_received = TRUE;
+                    conn->close_send_pending = HHTRUE;
+                    conn->close_received = HHTRUE;
                 }
                 break;
             case PROTOCOL_MSG_PING:
@@ -257,7 +257,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
         case PROTOCOL_RESULT_FAIL:
             if (!conn->close_send_pending)
             {
-                conn->should_fail = TRUE;
+                conn->should_fail = HHTRUE;
                 endpoint_close(
                     conn,
                     conn->pconn.error_code,
@@ -453,10 +453,10 @@ static void endpoint_state_clear(endpoint* conn)
 {
     conn->write_pos = 0;
     conn->read_pos = 0;
-    conn->close_received = FALSE;
-    conn->close_sent = FALSE;
-    conn->close_send_pending = FALSE;
-    conn->should_fail = FALSE;
+    conn->close_received = HHFALSE;
+    conn->close_sent = HHFALSE;
+    conn->close_send_pending = HHFALSE;
+    conn->should_fail = HHFALSE;
 }
 
 /* reset buffers etc but don't deallocate  */
@@ -623,7 +623,7 @@ endpoint_result endpoint_close(
         msg.data = orig_data;
         msg.msg_len = data_len;
         r = endpoint_send_pmsg(conn, &msg);
-        conn->close_send_pending = TRUE;
+        conn->close_send_pending = HHTRUE;
 
         hhfree(orig_data);
         break;
