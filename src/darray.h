@@ -47,12 +47,8 @@ darray* darray_create(size_t elem_size, int init_size_reserved);
  * make a darray and initialize it with data.
  * init_size_reserved must be >= num_elemnts
  */
-darray* darray_create_data(
-    void* data,
-    size_t elem_size,
-    int num_elements,
-    int init_size_reserved
-);
+darray* darray_create_data(void* data, size_t elem_size, int num_elements,
+                           int init_size_reserved);
 
 /* create a new darray that's a copy of source */
 darray* darray_create_copy(const darray* source);

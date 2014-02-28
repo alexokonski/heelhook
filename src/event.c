@@ -222,12 +222,9 @@ static uint64_t event_get_now_ms(void)
     return now.tv_sec * 1000 + now.tv_usec / 1000;
 }
 
-event_time_id event_add_time_event(
-    event_loop* loop,
-    event_time_callback* callback,
-    uint64_t frequency_ms,
-    void* data
-)
+event_time_id event_add_time_event(event_loop* loop,
+                                   event_time_callback* callback,
+                                   uint64_t frequency_ms, void* data)
 {
     /* initialize the new time event */
     event_time* et = hhmalloc(sizeof(*et));

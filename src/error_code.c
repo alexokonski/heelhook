@@ -30,7 +30,7 @@
 
 #include "error_code.h"
 
-BOOL is_error_valid(int err_code)
+HHBOOL is_error_valid(int err_code)
 {
     if (err_code < 1000 ||
         (err_code >= 1004 && err_code <= 1006) ||

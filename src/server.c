@@ -82,32 +82,18 @@ struct server
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data);
 
-static HHBOOL server_on_open_callback(
-    endpoint* conn,
-    protocol_conn* proto_conn,
-    void* userdata
-);
+static HHBOOL server_on_open_callback(endpoint* conn, protocol_conn*
+                                      proto_conn, void* userdata);
 
-static void server_on_message_callback(
-    endpoint* conn,
-    endpoint_msg* msg,
-    void* userdata
-);
+static void server_on_message_callback(endpoint* conn, endpoint_msg* msg,
+                                       void* userdata);
 
-static void server_on_ping_callback(
-    endpoint* conn_info,
-    char* payload,
-    int payload_len,
-    void* userdata
-);
+static void server_on_ping_callback(endpoint* conn_info, char* payload,
+                                    int payload_len, void* userdata);
 
-static void server_on_close_callback(
-    endpoint* conn_info,
-    int code,
-    const char* reason,
-    int reason_len,
-    void* userdata
-);
+static void server_on_close_callback(endpoint* conn_info, int code,
+                                     const char* reason, int reason_len,
+                                     void* userdata);
 
 static endpoint_callbacks g_endpoint_cbs =
 {
@@ -120,13 +106,8 @@ static endpoint_callbacks g_endpoint_cbs =
 static int init_conn(server_conn* conn, server* serv)
 {
     conn->serv = serv;
-    int r = endpoint_init(
-        &conn->endp,
-        ENDPOINT_SERVER,
-        &serv->options.endp_settings,
-        &g_endpoint_cbs,
-        conn
-    );
+    int r = endpoint_init(&conn->endp, ENDPOINT_SERVER,
+                          &serv->options.endp_settings, &g_endpoint_cbs, conn);
 
     return r;
 }
@@ -157,23 +138,15 @@ static server_conn* activate_conn(server* serv, int client_fd)
 static event_result queue_write(server_conn* conn)
 {
     /* queue up writing the handshake response back */
-    event_result er = event_add_io_event(
-        conn->serv->loop,
-        conn->fd,
-        EVENT_WRITEABLE,
-        write_to_client_callback,
-        conn
-    );
+    event_result er;
+    er = event_add_io_event(conn->serv->loop, conn->fd, EVENT_WRITEABLE,
+                             write_to_client_callback, conn);
 
     return er;
 }
 
-static void server_on_ping_callback(
-    endpoint* conn_info,
-    char* payload,
-    int payload_len,
-    void* userdata
-)
+static void server_on_ping_callback(endpoint* conn_info, char* payload,
+                                    int payload_len, void* userdata)
 {
     hhunused(conn_info);
 
@@ -186,13 +159,9 @@ static void server_on_ping_callback(
     }
 }
 
-static void server_on_close_callback(
-    endpoint* conn_info,
-    int code,
-    const char* reason,
-    int reason_len,
-    void* userdata
-)
+static void server_on_close_callback(endpoint* conn_info, int code,
+                                     const char* reason, int reason_len,
+                                     void* userdata)
 {
     hhunused(conn_info);
 
@@ -205,11 +174,8 @@ static void server_on_close_callback(
     }
 
     /* take this client out of the event loop */
-    event_delete_io_event(
-        serv->loop,
-        conn->fd,
-        EVENT_READABLE | EVENT_WRITEABLE
-    );
+    event_delete_io_event(serv->loop, conn->fd, EVENT_READABLE |
+                          EVENT_WRITEABLE);
 
     /* close the socket */
     close(conn->fd);
@@ -253,11 +219,9 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
     }
 }
 
-static HHBOOL server_on_open_callback(
-    endpoint* conn_info,
-    protocol_conn* proto_conn,
-    void* userdata
-)
+static HHBOOL
+server_on_open_callback(endpoint* conn_info,
+                        protocol_conn* proto_conn, void* userdata)
 {
     hhunused(conn_info);
     hhunused(proto_conn);
@@ -284,11 +248,8 @@ static HHBOOL server_on_open_callback(
      * subprotocols/extensions
      */
     if (serv->callbacks.on_open_callback != NULL &&
-        !serv->callbacks.on_open_callback(
-            conn,
-            &subprotocol_out,
-            extensions_out
-        )
+        !serv->callbacks.on_open_callback(conn, &subprotocol_out,
+                                          extensions_out)
     )
     {
         goto reject_client;
@@ -297,10 +258,7 @@ static HHBOOL server_on_open_callback(
     char* subprotocol = NULL;
     if (subprotocol_out >= 0)
     {
-        server_get_client_subprotocol(
-            conn,
-            subprotocol_out
-        );
+        server_get_client_subprotocol(conn, subprotocol_out);
     }
 
     if (extensions_out != NULL && extensions_out[0] >= 0)
@@ -311,19 +269,15 @@ static HHBOOL server_on_open_callback(
         for (e = 0; e < num_extensions; e++)
         {
             if (extensions_out[e] < 0) break;
-            extensions[e] = (char*)server_get_client_extension(
-                conn,
-                extensions_out[e]
-            );
+            extensions[e] =
+                (char*)server_get_client_extension(conn, extensions_out[e]);
         }
         extensions[e] = NULL;
     }
 
-    endpoint_result r = endpoint_send_handshake_response(
-            &conn->endp,
-            subprotocol,
-            extensions
-    );
+    endpoint_result r;
+    r = endpoint_send_handshake_response(&conn->endp, subprotocol, extensions);
+
     if (r != ENDPOINT_RESULT_SUCCESS)
     {
         goto reject_client;
@@ -350,11 +304,8 @@ static HHBOOL server_on_open_callback(
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "write_handshake event loop error: %d",
-            er
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "write_handshake event loop error: %d",
+                  er);
         goto reject_client;
     }
 
@@ -367,11 +318,8 @@ reject_client:
     return HHFALSE;
 }
 
-static void server_on_message_callback(
-    endpoint* conn_info,
-    endpoint_msg* msg,
-    void* userdata
-)
+static void server_on_message_callback(endpoint* conn_info, endpoint_msg* msg,
+                                       void* userdata)
 {
     hhunused(conn_info);
 
@@ -399,11 +347,7 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
         er = queue_write(conn);
         if (er != EVENT_RESULT_SUCCESS)
         {
-            hhlog_log(
-                HHLOG_LEVEL_ERROR,
-                "send_msg event loop error: %d",
-                er
-            );
+            hhlog_log(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
         }
         break;
     case ENDPOINT_READ_ERROR:
@@ -426,49 +370,33 @@ static void accept_callback(event_loop* loop, int fd, void* data)
 
     if (client_fd == -1)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "-1 fd when accepting socket, fd: %d",
-            fd
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "-1 fd when accepting socket, fd: %d",
+                  fd);
         return;
     }
 
     server_conn* conn = activate_conn(serv, client_fd);
     if (conn == NULL)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "Server at max client capacity (%d)",
-            serv->options.max_clients
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "Server at max client capacity: %d",
+                  serv->options.max_clients);
         close(client_fd);
         return;
     }
 
-    event_result r = event_add_io_event(
-        loop,
-        client_fd,
-        EVENT_READABLE,
-        read_from_client_callback,
-        conn
-    );
+    event_result r;
+    r = event_add_io_event(loop, client_fd, EVENT_READABLE,
+                           read_from_client_callback, conn);
 
     if (r != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "add client to event loop error: %d",
-            r
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "add client to event loop error: %d", r);
         event_delete_io_event(loop, client_fd, EVENT_READABLE);
     }
 }
 
-server* server_create(
-    config_server_options* options,
-    server_callbacks* callbacks
-)
+server* server_create(config_server_options* options, server_callbacks*
+                      callbacks)
 {
     int i = 0;
     server* serv = hhmalloc(sizeof(*serv));
@@ -536,11 +464,8 @@ void server_destroy(server* serv)
 static void server_teardown(server* serv)
 {
     /* stop listening for new connections */
-    event_delete_io_event(
-        serv->loop,
-        serv->fd,
-        EVENT_READABLE | EVENT_WRITEABLE
-    );
+    event_delete_io_event(serv->loop, serv->fd,
+                          EVENT_READABLE | EVENT_WRITEABLE);
 
     /* stop accepting connections to the server */
     close(serv->fd);
@@ -556,15 +481,7 @@ static void server_teardown(server* serv)
     }
 
     /* close each connection */
-    INLIST_FOREACH(
-        serv,
-        server_conn,
-        conn,
-        next,
-        prev,
-        active_head,
-        active_tail
-    )
+    INLIST_FOREACH(serv,server_conn,conn,next,prev,active_head,active_tail)
     {
         const char msg[] = "server shutting down";
         server_conn_close(conn, HH_ERROR_GOING_AWAY, msg, sizeof(msg)-1);
@@ -607,11 +524,7 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "send_msg event loop error: %d",
-            er
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -619,22 +532,15 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 }
 
 /* send a ping with payload (NULL for no payload)*/
-server_result server_conn_send_ping(
-    server_conn* conn,
-    char* payload,
-    int payload_len
-)
+server_result server_conn_send_ping(server_conn* conn, char* payload, int
+                                    payload_len)
 {
     endpoint_result r = endpoint_send_ping(&conn->endp, payload, payload_len);
 
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "send_ping event loop error: %d",
-            er
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "send_ping event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -642,22 +548,15 @@ server_result server_conn_send_ping(
 }
 
 /* send a pong with payload (NULL for no payload)*/
-server_result server_conn_send_pong(
-    server_conn* conn,
-    char* payload,
-    int payload_len
-)
+server_result server_conn_send_pong(server_conn* conn, char* payload, int
+                                    payload_len)
 {
     endpoint_result r = endpoint_send_pong(&conn->endp, payload, payload_len);
 
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "send_pong event loop error: %d",
-            er
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "send_pong event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -668,23 +567,15 @@ server_result server_conn_send_pong(
  * close this connection. sends a close message with the error
  * code and reason
  */
-server_result server_conn_close(
-    server_conn* conn,
-    uint16_t code,
-    const char* reason,
-    int reason_len
-)
+server_result server_conn_close(server_conn* conn, uint16_t code, const char*
+                                reason, int reason_len)
 {
     endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
 
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "close event loop error: %d",
-            er
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "close event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -742,11 +633,8 @@ server_result server_listen(server* serv)
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "failed to create socket: %s",
-            strerror(errno)
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "failed to create socket: %s",
+                  strerror(errno));
         return SERVER_RESULT_FAIL;
     }
     serv->fd = s;
@@ -759,49 +647,32 @@ server_result server_listen(server* serv)
     if (opt->bindaddr != NULL &&
         inet_aton(opt->bindaddr, &addr.sin_addr) != 0)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "invalid bind address: %s",
-            opt->bindaddr
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
+                  opt->bindaddr);
         return SERVER_RESULT_FAIL;
     }
 
     if (bind(s, (struct sockaddr*)(&addr), sizeof(addr)) == -1)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "failed to bind socket: %s",
-            strerror(errno)
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "failed to bind socket: %s",
+                  strerror(errno));
         return SERVER_RESULT_FAIL;
     }
 
     if (listen(s, SERVER_LISTEN_BACKLOG) == -1)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "failed to listen on socket: %s",
-            strerror(errno)
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "failed to listen on socket: %s",
+                  strerror(errno));
         return SERVER_RESULT_FAIL;
     }
 
-    event_result r = event_add_io_event(
-        serv->loop,
-        s,
-        EVENT_READABLE,
-        accept_callback,
-        serv
-    );
+    event_result r;
+    r = event_add_io_event(serv->loop,s,EVENT_READABLE,accept_callback,serv);
 
     if (r != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(
-            HHLOG_LEVEL_ERROR,
-            "error adding accept callback to event loop: %d",
-            r
-        );
+        hhlog_log(HHLOG_LEVEL_ERROR, "error adding accept callback to event"
+                  "loop: %d", r);
         return SERVER_RESULT_FAIL;
     }
 
@@ -809,12 +680,9 @@ server_result server_listen(server* serv)
      * add watchdog so we know when we're being asked to shut down
      * the server
      */
-    serv->watchdog_id = event_add_time_event(
-        serv->loop,
-        stop_watchdog,
-        SERVER_WATCHDOG_FREQ_MS,
-        serv
-    );
+    serv->watchdog_id =
+        event_add_time_event(serv->loop, stop_watchdog,
+                             SERVER_WATCHDOG_FREQ_MS, serv);
 
     /* block and process all connections */
     event_pump_events(serv->loop, 0);

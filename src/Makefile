@@ -1,5 +1,5 @@
 STD= -std=c99 -pedantic
-WARN= -Wall -Wextra
+WARN= -Wall -Wextra -Werror
 OPT?= -O2
 DEBUG= -g -ggdb
 SYMBOL= -D_BSD_SOURCE -D_POSIX_C_SOURCE

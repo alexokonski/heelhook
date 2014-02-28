@@ -47,10 +47,8 @@ typedef struct
 } config_client_options;
 
 /* Parse settings from config_str into options */
-/*void config_parse_from_string(
-    const char* config_str,
-    config_options* options
-);*/
+/*void config_parse_from_string(const char* config_str, config_options*
+                                options);*/
 
 #endif /* __CONFIG_H_ */
 

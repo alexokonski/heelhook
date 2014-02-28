@@ -40,5 +40,5 @@
 #define HH_ERROR_CLIENT_NEEDS_EXTENSION     1010
 #define HH_ERROR_UNEXPECTED_CONDITION       1011
 
-BOOL is_error_valid(int err_code);
+HHBOOL is_error_valid(int err_code);
 

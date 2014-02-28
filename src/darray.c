@@ -68,12 +68,8 @@ darray* darray_create(size_t elem_size, int init_size_reserved)
  * make a darray and initialize it with data.
  * init_size_reserved must be >= num_elemnts
  */
-darray* darray_create_data(
-    void* data,
-    size_t elem_size,
-    int num_elements,
-    int init_size_reserved
-)
+darray* darray_create_data(void* data, size_t elem_size, int num_elements,
+                           int init_size_reserved)
 {
     int valid_size = init_size_reserved >= num_elements;
     hhassert(valid_size);

@@ -168,11 +168,8 @@ static const uint8_t utf8d[] = {
   1,3,1,1,1,1,1,3,1,3,1,1,1,1,1,1,1,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1, // s7..s8
 };
 
-static HH_INLINE uint32_t utf8_decode(
-    uint32_t* state,
-    uint32_t* codep,
-    uint32_t byte
-)
+static HH_INLINE uint32_t utf8_decode(uint32_t* state, uint32_t* codep,
+                                      uint32_t byte)
 {
   uint32_t type = utf8d[byte];
 
@@ -197,15 +194,9 @@ static HHBOOL is_valid_utf8(const char* str, int length)
     return state == UTF8_ACCEPT;
 }
 
-static void mask_data(
-    char* data,
-    size_t len,
-    char* mask_key,
-    int mask_index,
-    HHBOOL validate_utf8,
-    uint32_t* state,
-    uint32_t* codepoint
-)
+static void mask_data(char* data, size_t len, char* mask_key, int mask_index,
+                      HHBOOL validate_utf8, uint32_t* state,
+                      uint32_t* codepoint)
 {
     uint8_t* d = (uint8_t*)data;
     for (size_t i = 0; i < len; i++)
@@ -219,16 +210,10 @@ static void mask_data(
     }
 }
 
-static void mask_and_move_data(
-    char* dest,
-    char* src,
-    size_t len,
-    char* mask_key_ptr,
-    int mask_index,
-    HHBOOL validate_utf8,
-    uint32_t* state,
-    uint32_t* codepoint
-)
+static void mask_and_move_data(char* dest, char* src, size_t len, char*
+                               mask_key_ptr, int mask_index,
+                               HHBOOL validate_utf8, uint32_t* state,
+                               uint32_t* codepoint)
 {
     /*
      * the move we're about to do might overwrite the data at
@@ -295,10 +280,7 @@ static char* eat_digits(char* buf)
     return buf;
 }
 
-static char* parse_http_version(
-    char* buf,
-    char* end_buf
-)
+static char* parse_http_version(char* buf, char* end_buf)
 {
     const int http_len = 5;
     if ((buf + http_len) >= end_buf) return NULL;
@@ -317,11 +299,8 @@ static char* parse_http_version(
     return buf;
 }
 
-static char* parse_http_line(
-    protocol_handshake* info,
-    char* buf,
-    char* end_buf,
-    protocol_endpoint type)
+static char* parse_http_line(protocol_handshake* info, char* buf,
+                             char* end_buf, protocol_endpoint type)
 {
     const int get_len = 4;
 
@@ -422,10 +401,7 @@ static void add_header(protocol_handshake* info, char* name, char* value)
     }
 }
 
-static char* parse_headers(
-    protocol_handshake* info,
-    char* buf,
-    char* end_buf)
+static char* parse_headers(protocol_handshake* info, char* buf, char* end_buf)
 {
     while (buf != end_buf && !isspace(*buf))
     {
@@ -451,22 +427,17 @@ static char* parse_headers(
     return buf;
 }
 
-static void handle_violation(
-    protocol_conn* conn,
-    uint16_t code,
-    const char* msg
-)
+static void handle_violation(protocol_conn* conn, uint16_t code,
+                             const char* msg)
 {
     conn->error_code = code;
     conn->error_msg = msg;
     conn->error_len = strlen(msg); /* terminator left out on purpose */
 }
 
-static protocol_result protocol_parse_frame_hdr(
-    protocol_conn* conn,
-    HHBOOL expect_mask,
-    size_t* pos_ptr
-)
+static protocol_result
+protocol_parse_frame_hdr(protocol_conn* conn, HHBOOL expect_mask,
+                         size_t* pos_ptr)
 {
     protocol_frame_hdr* hdr = &conn->frame_hdr;
     if (hdr->payload_len >= 0) return PROTOCOL_RESULT_FRAME_FINISHED;
@@ -508,11 +479,8 @@ static protocol_result protocol_parse_frame_hdr(
         conn->frag_msg.type == PROTOCOL_MSG_NONE)
 
     {
-        handle_violation(
-            conn,
-            HH_ERROR_PROTOCOL,
-            "Out of band continuation frame"
-        );
+        handle_violation(conn, HH_ERROR_PROTOCOL, "Out of band continuation"
+                         "frame");
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -524,11 +492,8 @@ static protocol_result protocol_parse_frame_hdr(
         (opcode == PROTOCOL_OPCODE_TEXT ||
          opcode == PROTOCOL_OPCODE_BINARY))
     {
-        handle_violation(
-            conn,
-            HH_ERROR_PROTOCOL,
-            "Out of band text or binary frame"
-        );
+        handle_violation(conn, HH_ERROR_PROTOCOL, "Out of band text or binary"
+                         "frame");
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -539,11 +504,8 @@ static protocol_result protocol_parse_frame_hdr(
           opcode == PROTOCOL_OPCODE_CONTINUATION))
 
     {
-        handle_violation(
-            conn,
-            HH_ERROR_PROTOCOL,
-            "Control frames must not be fragmented"
-        );
+        handle_violation(conn, HH_ERROR_PROTOCOL, "Control frames must not be"
+                         "fragmented");
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -556,11 +518,7 @@ static protocol_result protocol_parse_frame_hdr(
     {
         const char* msg = (expect_mask) ? "All client frames must be masked"
                                         : "Server frames must not be masked";
-        handle_violation(
-            conn,
-            HH_ERROR_PROTOCOL,
-            msg
-        );
+        handle_violation(conn, HH_ERROR_PROTOCOL, msg);
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -573,11 +531,8 @@ static protocol_result protocol_parse_frame_hdr(
           opcode == PROTOCOL_OPCODE_BINARY ||
           opcode == PROTOCOL_OPCODE_CONTINUATION))
     {
-        handle_violation(
-            conn,
-            HH_ERROR_PROTOCOL,
-            "Control frames must be <=125 bytes"
-        );
+        handle_violation(conn, HH_ERROR_PROTOCOL, "Control frames must be"
+                         "<=125 bytes");
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -626,11 +581,8 @@ static protocol_result protocol_parse_frame_hdr(
     if (conn->settings->read_max_num_frames != -1 &&
         conn->num_fragments_read >= conn->settings->read_max_num_frames)
     {
-        handle_violation(
-            conn,
-            HH_ERROR_POLICY_VIOLATION,
-            "client sent too many frames in one message"
-        );
+        handle_violation(conn, HH_ERROR_POLICY_VIOLATION, "client sent too"
+                         "many frames in one message");
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -643,11 +595,8 @@ static protocol_result protocol_parse_frame_hdr(
         msg->msg_len + payload_len > (uint64_t)read_max_msg_size)
 
     {
-        handle_violation(
-            conn,
-            HH_ERROR_LARGE_MESSAGE,
-            "client sent message that was too large"
-        );
+        handle_violation(conn, HH_ERROR_LARGE_MESSAGE, "client sent message"
+                         "that was too large");
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -669,15 +618,12 @@ static protocol_result protocol_parse_frame_hdr(
 }
 
 /* create a protocol_conn on the heap, init buffers to init_buf_len bytes */
-protocol_conn* protocol_create_conn(
-    protocol_settings* settings,
-    size_t init_buf_len,
-    void* userdata
-)
+protocol_conn* protocol_create_conn(protocol_settings* settings, size_t
+                                    init_buf_len, void* userdata)
 {
     protocol_conn* conn = hhmalloc(sizeof(*conn));
-    if (conn == NULL || protocol_init_conn(conn, settings, init_buf_len,
-                            userdata) < 0)
+    if (conn == NULL ||
+        protocol_init_conn(conn, settings, init_buf_len, userdata) < 0)
     {
         if (conn != NULL && conn->info.headers != NULL)
         {
@@ -705,12 +651,8 @@ protocol_conn* protocol_create_conn(
  * initialize an already allocated protocol_conn. allocates read and
  * write buffers
 */
-int protocol_init_conn(
-    protocol_conn* conn,
-    protocol_settings* settings,
-    size_t init_buf_len,
-    void* userdata
-)
+int protocol_init_conn(protocol_conn* conn, protocol_settings* settings,
+                       size_t init_buf_len, void* userdata)
 {
     memset(conn, 0, sizeof(*conn));
     conn->settings = settings;
@@ -802,10 +744,8 @@ void protocol_reset_conn(protocol_conn* conn)
     darray_clear(conn->write_buffer);
 }
 
-static protocol_handshake_result protocol_read_handshake(
-    protocol_conn* conn,
-    protocol_endpoint type
-)
+static protocol_handshake_result
+protocol_read_handshake(protocol_conn* conn, protocol_endpoint type)
 {
     protocol_handshake* info = &conn->info;
 
@@ -862,11 +802,9 @@ protocol_handshake_result protocol_read_handshake_request(protocol_conn* conn)
  * protocol_read_handshake_request.  on success, DOES NOT advance state.  This should
  * be done after the write buffer has actually be written to a socket.
  */
-protocol_handshake_result protocol_write_handshake_response(
-    protocol_conn* conn,
-    const char* protocol,
-    const char** extensions
-)
+protocol_handshake_result
+protocol_write_handshake_response(protocol_conn* conn, const char* protocol,
+                                  const char** extensions)
 {
     hhassert(conn->state == PROTOCOL_STATE_WRITE_HANDSHAKE);
 
@@ -893,18 +831,13 @@ protocol_handshake_result protocol_write_handshake_response(
         return PROTOCOL_HANDSHAKE_FAIL;
     }
 
-    const char* web_sock_key = protocol_get_header_value(
-        conn,
-        "Sec-WebSocket-Key",
-        0
-    );
+    const char* web_sock_key =
+        protocol_get_header_value(conn, "Sec-WebSocket-Key", 0);
     if (web_sock_key == NULL) return PROTOCOL_HANDSHAKE_FAIL;
     if (strlen(web_sock_key) != 24) return PROTOCOL_HANDSHAKE_FAIL;
 
     char sha_buf[64];
-    int num_written = snprintf(
-        sha_buf,
-        sizeof(sha_buf),
+    int num_written = snprintf(sha_buf, sizeof(sha_buf),
         "%s%s",
         web_sock_key,
         key_guid
@@ -921,16 +854,10 @@ protocol_handshake_result protocol_write_handshake_response(
     char response_key[BASE64_MAX_OUTPUT_LEN(SHA1HashSize)];
     base64_encodestate encode_state;
     base64_init_encodestate(&encode_state);
-    int num_encoded = base64_encode_block(
-        sha_result,
-        SHA1HashSize,
-        response_key,
-        &encode_state
-    );
-    num_encoded += base64_encode_blockend(
-        &response_key[num_encoded],
-        &encode_state
-    );
+    int num_encoded = base64_encode_block(sha_result, SHA1HashSize,
+                                          response_key, &encode_state);
+    num_encoded += base64_encode_blockend(&response_key[num_encoded],
+                                          &encode_state);
     size_t response_key_len = num_encoded - 1;
 
     /*
@@ -973,12 +900,8 @@ protocol_handshake_result protocol_write_handshake_response(
     /* write out protocol header, if necessary */
     if (protocol != NULL)
     {
-        num_written += snprintf(
-            &buf[num_written],
-            total_len - num_written,
-            protocol_template,
-            protocol
-        );
+        num_written += snprintf(&buf[num_written], total_len - num_written,
+                                protocol_template, protocol);
     }
 
     /* write out the extension header, if necessary */
@@ -987,22 +910,15 @@ protocol_handshake_result protocol_write_handshake_response(
         const char** exts = extensions;
         while ((*exts) != NULL)
         {
-            num_written += snprintf(
-                &buf[num_written],
-                total_len - num_written,
-                extension_template,
-                *exts
-            );
+            num_written += snprintf(&buf[num_written], total_len -
+                                    num_written, extension_template, *exts);
             exts++;
         }
     }
 
     /* write out the closing CRLF */
-    num_written += snprintf(
-        &buf[num_written],
-        total_len - num_written,
-        "\r\n"
-    );
+    num_written += snprintf(&buf[num_written], total_len - num_written,
+                            "\r\n");
 
     /*
      * num_written doesn't include the null terminator, so we should have
@@ -1021,9 +937,8 @@ protocol_handshake_result protocol_write_handshake_response(
  * On success, advances state from
  * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_CONNECTED
  */
-protocol_handshake_result protocol_read_handshake_response(
-    protocol_conn* conn
-)
+protocol_handshake_result
+protocol_read_handshake_response(protocol_conn* conn)
 {
     return protocol_read_handshake(conn, PROTOCOL_ENDPOINT_CLIENT);
 }
@@ -1045,39 +960,26 @@ static size_t append_key_header(darray** array, protocol_conn* conn)
     char request_key_base64[BASE64_MAX_OUTPUT_LEN(KEY_LEN)];
     base64_encodestate encode_state;
     base64_init_encodestate(&encode_state);
-    int num_encoded = base64_encode_block(
-        request_key,
-        KEY_LEN,
-        request_key_base64,
-        &encode_state
-    );
-    num_encoded += base64_encode_blockend(
-        &request_key_base64[num_encoded],
-        &encode_state
-    );
+    int num_encoded = base64_encode_block(request_key, KEY_LEN,
+                                          request_key_base64, &encode_state);
+    num_encoded += base64_encode_blockend(&request_key_base64[num_encoded],
+                                          &encode_state);
 
     /* write out header value  */
     size_t header_len =
         strlen(HEADER_KEY) + strlen(request_key_base64) + HEADER_TEMPLATE_LEN;
     char* buf = darray_ensure(array, header_len);
     size_t write_pos = darray_get_len((*array));
-    size_t num_written = snprintf(
-        &buf[write_pos],
-        header_len,
-        g_header_template,
-        HEADER_KEY,
-        request_key_base64
-    );
+    size_t num_written = snprintf(&buf[write_pos], header_len,
+                                  g_header_template, HEADER_KEY,
+                                  request_key_base64);
     darray_add_len((*array), num_written);
 
     return num_written;
 }
 
-static size_t append_headers_list(
-    darray** array,
-    const char* key,
-    const char** values
-)
+static size_t append_headers_list(darray** array, const char* key,
+                                  const char** values)
 {
     size_t write_pos = darray_get_len((*array));
     size_t total_written = 0;
@@ -1087,13 +989,8 @@ static size_t append_headers_list(
         /* 4 for colon and newlines in header_template, and null term */
         size_t header_len = key_len + strlen(*values) + HEADER_TEMPLATE_LEN;
         char* buf = darray_ensure(array, header_len);
-        size_t num_written = snprintf(
-            &buf[write_pos],
-            header_len,
-            g_header_template,
-            key,
-            *values
-        );
+        size_t num_written = snprintf(&buf[write_pos], header_len,
+                                      g_header_template, key, *values);
         values++;
         darray_add_len((*array), num_written);
         write_pos += num_written;
@@ -1107,12 +1004,12 @@ static size_t append_headers_list(
  * write the client handshake request to conn->write_buffer. On success,
  * advances state to PROTOCOL_STATE_READ_HANDSHAKE
  */
-protocol_handshake_result protocol_write_handshake_request(
-    protocol_conn* conn,
-    const char* resource,
-    const char** protocols, /* NULL terminated (optional) */
-    const char** extensions, /* NULL terminated (optional) */
-    const char** extra_headers /* NULL terminated, (optional) */
+protocol_handshake_result
+protocol_write_handshake_request(
+        protocol_conn* conn, const char* resource,
+        const char** protocols, /* NULL terminated (optional) */
+        const char** extensions, /* NULL terminated (optional) */
+        const char** extra_headers /* NULL terminated, (optional) */
 )
 {
     static const char http_line[] =
@@ -1128,30 +1025,20 @@ protocol_handshake_result protocol_write_handshake_request(
     char* buf = darray_ensure(&conn->write_buffer, http_line_size);
 
     size_t total_written = 0;
-    total_written += snprintf(
-        &buf[total_written],
-        http_line_size,
-        http_line,
-        resource
-    );
+    total_written += snprintf(&buf[total_written], http_line_size, http_line,
+                              resource);
     darray_add_len(conn->write_buffer, total_written);
 
     /* write Sec-WebSocket-Key header */
     total_written += append_key_header(&conn->write_buffer, conn);
 
     /* write Sec-WebSocket-Protocol header */
-    total_written += append_headers_list(
-        &conn->write_buffer,
-        HEADER_PROTOCOL,
-        protocols
-    );
+    total_written += append_headers_list(&conn->write_buffer, HEADER_PROTOCOL,
+                                         protocols);
 
     /* write Sec-WebSocket-Extensions header  */
-    total_written += append_headers_list(
-        &conn->write_buffer,
-        HEADER_EXTENSION,
-        extensions
-    );
+    total_written += append_headers_list(&conn->write_buffer,
+                                         HEADER_EXTENSION, extensions);
 
     /* buf could have changed */
     buf = darray_get_data(conn->write_buffer);
@@ -1169,13 +1056,8 @@ protocol_handshake_result protocol_write_handshake_request(
         size_t header_len = key_len + value_len + HEADER_TEMPLATE_LEN;
 
         char* buf = darray_ensure(&conn->write_buffer, header_len);
-        size_t num_written = snprintf(
-            &buf[total_written],
-            header_len,
-            g_header_template,
-            key,
-            value
-        );
+        size_t num_written = snprintf(&buf[total_written], header_len,
+                                      g_header_template, key, value);
         darray_add_len(conn->write_buffer, num_written);
         total_written += num_written;
         extra_headers++;
@@ -1187,11 +1069,7 @@ protocol_handshake_result protocol_write_handshake_request(
 
     /* +1 to add null term back in */
     buf = darray_ensure(&conn->write_buffer, close_size);
-    total_written += snprintf(
-        &buf[total_written],
-        close_size,
-        closing_chars
-    );
+    total_written += snprintf(&buf[total_written], close_size, closing_chars);
     darray_add_len(conn->write_buffer, close_size - 1);
 
     hhassert(total_written == darray_get_len(conn->write_buffer));
@@ -1222,11 +1100,8 @@ int protocol_get_num_header_values(protocol_conn* conn, const char* name)
 /*
  * Get one of the values retrieved for a header
  */
-const char* protocol_get_header_value(
-    protocol_conn* conn,
-    const char* name,
-    int index
-)
+const char* protocol_get_header_value(protocol_conn* conn, const char* name,
+                                      int index)
 {
     protocol_header* headers = darray_get_data(conn->info.headers);
     int len = darray_get_len(conn->info.headers);
@@ -1286,12 +1161,9 @@ const char* protocol_get_extension(protocol_conn* conn, int index)
  * conn->read_msg. read_msg will contain the read message if protocol_result
  * is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is untouched.
  */
-static protocol_result protocol_read_msg(
-    protocol_conn* conn,
-    size_t* start_pos,
-    HHBOOL expect_mask,
-    protocol_msg* read_msg
-)
+static protocol_result
+protocol_read_msg(protocol_conn* conn, size_t* start_pos, HHBOOL expect_mask,
+                  protocol_msg* read_msg)
 {
     size_t pos = *start_pos;
     char* raw_buffer = darray_get_data(conn->read_buffer);
@@ -1323,10 +1195,8 @@ static protocol_result protocol_read_msg(
      * we're going to process either the rest of the message,
      * or an incomplete piece of the message
      */
-    size_t len = hhmin(
-        data_end - data,
-        hdr->payload_len - hdr->payload_processed
-    );
+    size_t len = hhmin(data_end - data, hdr->payload_len -
+                       hdr->payload_processed);
 
     protocol_offset_msg* msg = &conn->frag_msg;
 
@@ -1353,12 +1223,8 @@ static protocol_result protocol_read_msg(
              */
             if (hdr->masked)
             {
-                mask_data(
-                    data,
-                    len,
-                    masking_key,
-                    hdr->payload_processed,
-                    (msg->type == PROTOCOL_MSG_TEXT),
+                mask_data(data, len, masking_key, hdr->payload_processed,
+                          (msg->type == PROTOCOL_MSG_TEXT),
                     &conn->valid_state.state,
                     &conn->valid_state.codepoint
                 );
@@ -1379,16 +1245,11 @@ static protocol_result protocol_read_msg(
             /*
              * this is a later fragment.
              */
-            mask_and_move_data(
-                &raw_buffer[msg->start_pos + msg->msg_len],
-                data,
-                len,
-                masking_key,
-                hdr->payload_processed,
-                (msg->type == PROTOCOL_MSG_TEXT),
-                &conn->valid_state.state,
-                &conn->valid_state.codepoint
-            );
+            mask_and_move_data(&raw_buffer[msg->start_pos + msg->msg_len],
+                               data, len, masking_key, hdr->payload_processed,
+                               (msg->type == PROTOCOL_MSG_TEXT),
+                               &conn->valid_state.state,
+                               &conn->valid_state.codepoint);
             hdr->payload_processed += len;
             msg->msg_len += len;
             pos += len;
@@ -1408,9 +1269,8 @@ static protocol_result protocol_read_msg(
                 memmove(frame_end, remainder_start, remainder_len);
 
                 /* our darray just got smaller */
-                darray_add_len(
-                    conn->read_buffer,
-                    -(remainder_start - frame_end)
+                darray_add_len(conn->read_buffer, -(remainder_start -
+                               frame_end)
                 );
 
                 pos -= (remainder_start - frame_end);
@@ -1425,11 +1285,8 @@ static protocol_result protocol_read_msg(
 
         if (conn->valid_state.state == UTF8_REJECT)
         {
-            handle_violation(
-                conn,
-                HH_ERROR_BAD_DATA,
-                "text frame was not valid utf-8 text"
-            );
+            handle_violation(conn, HH_ERROR_BAD_DATA, "text frame was not"
+                             "valid utf-8 text");
             return PROTOCOL_RESULT_FAIL;
         }
         else if (frame_finished)
@@ -1450,16 +1307,11 @@ static protocol_result protocol_read_msg(
             /*
              * this is the last fragment of a fragmented message.
              */
-            mask_and_move_data(
-                &raw_buffer[msg->start_pos + msg->msg_len],
-                data,
-                len,
-                masking_key,
-                hdr->payload_processed,
-                (msg->type == PROTOCOL_MSG_TEXT),
-                &conn->valid_state.state,
-                &conn->valid_state.codepoint
-            );
+            mask_and_move_data(&raw_buffer[msg->start_pos + msg->msg_len],
+                               data, len, masking_key, hdr->payload_processed,
+                               (msg->type == PROTOCOL_MSG_TEXT),
+                               &conn->valid_state.state,
+                               &conn->valid_state.codepoint);
             msg->msg_len += len;
             hdr->payload_processed += len;
             pos += len;
@@ -1480,9 +1332,8 @@ static protocol_result protocol_read_msg(
                 memmove(frame_end, remainder_start, remainder_len);
 
                 /* our darray just got smaller */
-                darray_add_len(
-                    conn->read_buffer,
-                    -(remainder_start - frame_end)
+                darray_add_len(conn->read_buffer, -(remainder_start -
+                               frame_end)
                 );
 
                 pos -= (remainder_start - frame_end);
@@ -1516,12 +1367,8 @@ static protocol_result protocol_read_msg(
              * mask data in place, no need to move it,
              * since this is the only fragment
              */
-            mask_data(
-                data,
-                len,
-                hdr->masking_key,
-                hdr->payload_processed,
-                (msg_type == PROTOCOL_MSG_TEXT),
+            mask_data(data, len, hdr->masking_key, hdr->payload_processed,
+                      (msg_type == PROTOCOL_MSG_TEXT),
                 &conn->valid_state.state,
                 &conn->valid_state.codepoint
             );
@@ -1548,11 +1395,8 @@ static protocol_result protocol_read_msg(
         if (conn->valid_state.state == UTF8_REJECT ||
             (msg_finished && conn->valid_state.state != UTF8_ACCEPT))
         {
-            handle_violation(
-                conn,
-                HH_ERROR_BAD_DATA,
-                "text frame was not valid utf-8 text"
-            );
+            handle_violation(conn, HH_ERROR_BAD_DATA,
+                             "text frame was not valid utf-8 text");
             return PROTOCOL_RESULT_FAIL;
         }
         else if (msg_finished &&
@@ -1561,21 +1405,15 @@ static protocol_result protocol_read_msg(
         {
             if (!is_error_valid(hh_ntohs((*(uint16_t*)read_msg->data))))
             {
-                handle_violation(
-                    conn,
-                    HH_ERROR_PROTOCOL,
-                    "Invalid error code"
-                );
+                handle_violation(conn, HH_ERROR_PROTOCOL,
+                                 "Invalid error code");
                 return PROTOCOL_RESULT_FAIL;
             }
             else if (read_msg->msg_len > 2 &&
                      !is_valid_utf8(&read_msg->data[2], read_msg->msg_len-2))
             {
-                handle_violation(
-                    conn,
-                    HH_ERROR_PROTOCOL,
-                    "Invalid utf-8 in close frame"
-                );
+                handle_violation(conn, HH_ERROR_PROTOCOL,
+                                 "Invalid utf-8 in close frame");
                 return PROTOCOL_RESULT_FAIL;
             }
             else
@@ -1598,29 +1436,23 @@ static protocol_result protocol_read_msg(
     }
 }
 
-protocol_result protocol_read_client_msg(
-    protocol_conn* conn,
-    size_t* start_pos,
-    protocol_msg* read_msg
-)
+protocol_result
+protocol_read_client_msg(protocol_conn* conn, size_t* start_pos,
+                         protocol_msg* read_msg)
 {
     return protocol_read_msg(conn, start_pos, HHTRUE, read_msg);
 }
 
-protocol_result protocol_read_server_msg(
-    protocol_conn* conn,
-    size_t* start_pos,
-    protocol_msg* read_msg
-)
+protocol_result
+protocol_read_server_msg(protocol_conn* conn, size_t* start_pos,
+                         protocol_msg* read_msg)
 {
     return protocol_read_msg(conn, start_pos, HHFALSE, read_msg);
 }
 
-static protocol_result protocol_write_msg(
-    protocol_conn* conn,
-    protocol_msg* write_msg,
-    protocol_endpoint type
-)
+static protocol_result
+protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
+                   protocol_endpoint type)
 {
     protocol_msg_type msg_type = write_msg->type;
     int64_t msg_len = write_msg->msg_len;
@@ -1749,10 +1581,8 @@ static protocol_result protocol_write_msg(
  * put the message in write_msg on conn->write_buffer.
  * msg will be broken up into frames of size write_max_frame_size
  */
-protocol_result protocol_write_server_msg(
-    protocol_conn* conn,
-    protocol_msg* write_msg
-)
+protocol_result
+protocol_write_server_msg(protocol_conn* conn, protocol_msg* write_msg)
 {
     return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_SERVER);
 }
@@ -1761,15 +1591,13 @@ protocol_result protocol_write_server_msg(
  * write write_msg to conn->write_buffer.  must be called after
  * protocol_read_handshake_request.
  */
-protocol_result protocol_write_client_msg(
-    protocol_conn* conn,
-    protocol_msg* write_msg
-)
+protocol_result
+protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg)
 {
     return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_CLIENT);
 }
 
-BOOL protocol_is_data(protocol_msg_type msg_type)
+HHBOOL protocol_is_data(protocol_msg_type msg_type)
 {
     switch (msg_type)
     {
@@ -1786,7 +1614,7 @@ BOOL protocol_is_data(protocol_msg_type msg_type)
     }
 }
 
-BOOL protocol_is_control(protocol_msg_type msg_type)
+HHBOOL protocol_is_control(protocol_msg_type msg_type)
 {
     switch (msg_type)
     {

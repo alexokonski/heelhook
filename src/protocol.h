@@ -218,22 +218,15 @@ struct protocol_conn
  * create a protocol_conn on the heap, init buffers to init_buf_len bytes
  * the caller is responsible for the settings object
  */
-protocol_conn* protocol_create_conn(
-    protocol_settings* settings,
-    size_t init_buf_len,
-    void* userdata
-);
+protocol_conn* protocol_create_conn(protocol_settings* settings,
+                                    size_t init_buf_len, void* userdata);
 
 /*
  * initialize an already allocated protocol_conn. allocates read and
  * write buffers
 */
-int protocol_init_conn(
-    protocol_conn* conn,
-    protocol_settings* settings,
-    size_t init_buf_len,
-    void* userdata
-);
+int protocol_init_conn(protocol_conn* conn, protocol_settings* settings,
+                       size_t init_buf_len, void* userdata);
 
 /*
  * free/destroy a protocol_conn
@@ -255,9 +248,8 @@ void protocol_reset_conn(protocol_conn* conn);
  * advances state from
  * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_WRITE_HANDSHAKE
  */
-protocol_handshake_result protocol_read_handshake_request(
-    protocol_conn* conn
-);
+protocol_handshake_result
+protocol_read_handshake_request(protocol_conn* conn);
 
 /*
  * write the handshake response to the client to conn->info.buffer. 
@@ -265,10 +257,11 @@ protocol_handshake_result protocol_read_handshake_request(
  * advances state from 
  * PROTOCOL_STATE_WRITE_HANDSHAKE -> PROTOCOL_STATE_CONNECTED
  */
-protocol_handshake_result protocol_write_handshake_response(
-    protocol_conn* conn,
-    const char* protocol, /* (optional) */
-    const char** extensions /* NULL terminated (optional) */
+protocol_handshake_result
+protocol_write_handshake_response(
+            protocol_conn* conn, 
+            const char* protocol, /* (optional) */
+            const char** extensions /* NULL terminated (optional) */
 );
 
 /*
@@ -276,21 +269,20 @@ protocol_handshake_result protocol_write_handshake_response(
  * On success, advances state from
  * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_CONNECTED
  */
-protocol_handshake_result protocol_read_handshake_response(
-    protocol_conn* conn
-);
+protocol_handshake_result
+protocol_read_handshake_response(protocol_conn* conn);
 
 /*
  * write the client handshake request to conn->write_buffer. On success,
  * advances state to PROTOCOL_STATE_READ_HANDSHAKE.  extra_headers is 
  * in (key,value) order
  */
-protocol_handshake_result protocol_write_handshake_request(
-    protocol_conn* conn,
-    const char* resource,
-    const char** protocols, /* NULL terminated (optional) */
-    const char** extensions, /* NULL terminated (optional) */
-    const char** extra_headers /* NULL terminated, (optional) */
+protocol_handshake_result
+protocol_write_handshake_request(
+        protocol_conn* conn, const char* resource, 
+        const char** protocols, /* NULL terminated (optional) */
+        const char** extensions, /* NULL terminated (optional) */
+        const char** extra_headers /* NULL terminated, (optional) */
 );
 
 /*
@@ -301,11 +293,8 @@ int protocol_get_num_header_values(protocol_conn* conn, const char* name);
 /*
  * Get one of the values retrieved for a header
  */
-const char* protocol_get_header_value(
-    protocol_conn* conn,
-    const char* name,
-    int index
-);
+const char* protocol_get_header_value(protocol_conn* conn, const char* name,
+                                      int index);
 
 /*
  * Helper for easily getting the number of values the endpoint sent in the
@@ -339,11 +328,9 @@ const char* protocol_get_extension(protocol_conn* conn, int index);
  * conn->read_buffer, and as such will NOT be valid after any changes to
  * conn->read_buffer
  */
-protocol_result protocol_read_client_msg(
-    protocol_conn* conn,
-    size_t* start_pos,
-    protocol_msg* read_msg
-);
+protocol_result
+protocol_read_client_msg(protocol_conn* conn, size_t* start_pos,
+                         protocol_msg* read_msg);
 
 /*
  * process a frame sent by a server from the read buffer starting at start_pos
@@ -353,33 +340,27 @@ protocol_result protocol_read_client_msg(
  * conn->read_buffer, and as such will NOT be valid after any changes to
  * conn->read_buffer
  */
-protocol_result protocol_read_server_msg(
-    protocol_conn* conn,
-    size_t* start_pos,
-    protocol_msg* read_msg
-);
+protocol_result
+protocol_read_server_msg(protocol_conn* conn, size_t* start_pos,
+                         protocol_msg* read_msg);
 
 /*
  * write write_msg to conn->write_buffer.  must be called after
  * protocol_read_handshake_request.
  */
-protocol_result protocol_write_server_msg(
-    protocol_conn* conn,
-    protocol_msg* write_msg
-);
+protocol_result
+protocol_write_server_msg(protocol_conn* conn, protocol_msg* write_msg);
 
 /*
  * write write_msg to conn->write_buffer.  must be called after
  * protocol_read_handshake_request.
  */
-protocol_result protocol_write_client_msg(
-    protocol_conn* conn,
-    protocol_msg* write_msg
-);
+protocol_result
+protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg);
 
 /* Convienence functions */
-BOOL protocol_is_data(protocol_msg_type msg_type);
-BOOL protocol_is_control(protocol_msg_type msg_type);
+HHBOOL protocol_is_data(protocol_msg_type msg_type);
+HHBOOL protocol_is_control(protocol_msg_type msg_type);
 
 #endif /* __PROTOCOL_H_ */
 

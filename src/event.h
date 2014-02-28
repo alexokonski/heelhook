@@ -56,11 +56,8 @@ typedef struct event_time* event_time_id;
 #define EVENT_INVALID_TIME_ID (NULL)
 
 typedef void (event_io_callback)(event_loop* loop, int fd, void* data);
-typedef void (event_time_callback)(
-    event_loop* loop,
-    event_time_id id,
-    void* data
-);
+typedef void (event_time_callback)(event_loop* loop, event_time_id id,
+                                   void* data);
 
 event_loop*     event_create_loop(int max_io_events);
 void            event_stop_loop(event_loop* loop);

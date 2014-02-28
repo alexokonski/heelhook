@@ -86,31 +86,17 @@ typedef struct
     int64_t msg_len;
 } endpoint_msg;
 
-typedef HHBOOL (endpoint_on_open)(
-    endpoint* conn,
-    protocol_conn* proto_conn,
-    void* userdata
-);
-typedef void (endpoint_on_message)(
-    endpoint* conn,
-    endpoint_msg* msg,
-    void* userdata
-);
-typedef void (endpoint_on_ping)(
-    endpoint* conn_info,
-    char* payload,
-    int payload_len,
-    void* userdata
-);
+typedef HHBOOL (endpoint_on_open)(endpoint* conn, protocol_conn* proto_conn,
+                                  void* userdata);
+typedef void (endpoint_on_message)(endpoint* conn, endpoint_msg* msg,
+                                   void* userdata);
+typedef void (endpoint_on_ping)(endpoint* conn_info, char* payload,
+                                int payload_len, void* userdata);
 
 /* includes the close code and reason received from the client (if any) */
-typedef void (endpoint_on_close)(
-    endpoint* conn_info,
-    int code,
-    const char* reason,
-    int reason_len,
-    void* userdata
-);
+typedef void (endpoint_on_close)(endpoint* conn_info, int code,
+                                const char* reason, int reason_len,
+                                void* userdata);
 
 typedef enum
 {
@@ -147,13 +133,9 @@ struct endpoint_callbacks
  * pointers until endpoint_deinit is called.  will initialize the internal
  * protocol_conn
  */
-int endpoint_init(
-    endpoint* conn,
-    endpoint_type type,
-    endpoint_settings* settings,
-    endpoint_callbacks* callbacks,
-    void* userdata
-);
+int endpoint_init(endpoint* conn, endpoint_type type,
+                  endpoint_settings* settings, endpoint_callbacks* callbacks,
+                  void* userdata);
 
 /* deinitialize the endpoint */
 void endpoint_deinit(endpoint* conn);
@@ -162,10 +144,10 @@ void endpoint_deinit(endpoint* conn);
 void endpoint_reset(endpoint* conn);
 
 /* send a handshake reponse (only applies to server endpoints) */
-endpoint_result endpoint_send_handshake_response(
-    endpoint* conn,
-    const char* protocol, /* (optional) */
-    const char** extensions /* NULL terminated (optional) */
+endpoint_result
+endpoint_send_handshake_response(endpoint* conn,
+                     const char* protocol, /* (optional) */
+                     const char** extensions /* NULL terminated (optional) */
 );
 
 
@@ -173,29 +155,20 @@ endpoint_result endpoint_send_handshake_response(
 endpoint_result endpoint_send_msg(endpoint* conn, endpoint_msg* msg);
 
 /* send a ping with payload (NULL for no payload)*/
-endpoint_result endpoint_send_ping(
-    endpoint* conn,
-    char* payload,
-    int payload_len
-);
+endpoint_result
+endpoint_send_ping(endpoint* conn, char* payload, int payload_len);
 
 /* send a pong with payload (NULL for no payload)*/
-endpoint_result endpoint_send_pong(
-    endpoint* conn,
-    char* payload,
-    int payload_len
-);
+endpoint_result
+endpoint_send_pong(endpoint* conn, char* payload, int payload_len);
 
 /*
  * close this connection. sends a close message with the error
  * code and reason
  */
-endpoint_result endpoint_close(
-    endpoint* conn,
-    uint16_t code,
-    const char* reason,
-    int reason_len
-);
+endpoint_result
+endpoint_close(endpoint* conn, uint16_t code, const char* reason,
+               int reason_len);
 
 /*
  * write data from endpoint to a ready socket

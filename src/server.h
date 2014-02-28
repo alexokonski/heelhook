@@ -51,25 +51,15 @@ typedef struct server_conn server_conn;
  *        length equal to server_get_num_extensions. Fill in starting from
  *        index 0. Set all to -1 or don't write to this to choose 0 extensions
  */
-typedef HHBOOL (server_on_open)(
-    server_conn* conn,
-    int* subprotocol_out,
-    int* extensions_out
-);
+typedef HHBOOL (server_on_open)(server_conn* conn, int* subprotocol_out, int*
+                                extensions_out);
 typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg);
-typedef void (server_on_ping)(
-    server_conn* conn_info,
-    char* payload,
-    int payload_len
-);
+typedef void (server_on_ping)(server_conn* conn_info, char* payload, int
+                              payload_len);
 
 /* includes the close code and reason received from the client (if any) */
-typedef void (server_on_close)(
-    server_conn* conn_info,
-    int code,
-    const char* reason,
-    int reason_len
-);
+typedef void (server_on_close)(server_conn* conn_info, int code, const char*
+                               reason, int reason_len);
 
 typedef enum
 {
@@ -99,10 +89,8 @@ typedef struct
  * create an instance of a 'server' options and callbacks must be valid
  * pointers until server_stop is called
  */
-server* server_create(
-    config_server_options* options,
-    server_callbacks* callbacks
-);
+server* server_create(config_server_options* options, server_callbacks*
+                      callbacks);
 
 /*
  * destroy an instance of a server
@@ -113,29 +101,19 @@ void server_destroy(server* serv);
 server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg);
 
 /* send a ping with payload (NULL for no payload)*/
-server_result server_conn_send_ping(
-    server_conn* conn,
-    char* payload,
-    int payload_len
-);
+server_result server_conn_send_ping(server_conn* conn, char* payload, int
+                                    payload_len);
 
 /* send a pong with payload (NULL for no payload)*/
-server_result server_conn_send_pong(
-    server_conn* conn,
-    char* payload,
-    int payload_len
-);
+server_result server_conn_send_pong(server_conn* conn, char* payload, int
+                                    payload_len);
 
 /*
  * close this connection. sends a close message with the error
  * code and reason
  */
-server_result server_conn_close(
-    server_conn* conn,
-    uint16_t code,
-    const char* reason,
-    int reason_len
-);
+server_result server_conn_close(server_conn* conn, uint16_t code, const char*
+                                reason, int reason_len);
 
 /*
  * get number of subprotocols the client reported they support

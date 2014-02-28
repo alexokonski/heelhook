@@ -44,7 +44,7 @@ static hhlog_options g_default_options =
     .loglevel = HHLOG_LEVEL_INFO,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = TRUE
+    .log_to_stdout = HHTRUE
 };
 
 static hhlog_options* g_current_options = &g_default_options;
@@ -81,15 +81,11 @@ void hhlog_log(hhlog_level level, const char* format, ...)
     struct timeval tv;
     char time_buffer[64];
     gettimeofday(&tv, NULL);
-    int num_written = strftime(
-        time_buffer,
-        sizeof(time_buffer),
+    int num_written = strftime(time_buffer, sizeof(time_buffer),
         "%d %b %H:%M:%S.",
         localtime(&tv.tv_sec)
     );
-    num_written += snprintf(
-        &time_buffer[num_written],
-        sizeof(time_buffer) - num_written,
+    num_written += snprintf(&time_buffer[num_written], sizeof(time_buffer) - num_written,
         "%03d",
         (int)tv.tv_usec / 1000
     );
@@ -119,9 +115,7 @@ void hhlog_log(hhlog_level level, const char* format, ...)
         syslog_level = LOG_ERR;
         break;
     }
-    num_written = snprintf(
-        buffer,
-        sizeof(buffer),
+    num_written = snprintf(buffer, sizeof(buffer),
         "%s %s ",
         time_buffer,
         level_str
@@ -129,9 +123,7 @@ void hhlog_log(hhlog_level level, const char* format, ...)
 
     va_list list;
     va_start(list, format);
-    num_written += vsnprintf(
-        &buffer[num_written],
-        (int)sizeof(buffer) - num_written,
+    num_written += vsnprintf(&buffer[num_written], (int)sizeof(buffer) - num_written,
         format,
         list
     );

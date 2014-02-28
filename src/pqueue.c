@@ -186,21 +186,16 @@ static HHBOOL heap_validate(pqueue* q)
         int parent = pq_parent(i);
         if (heap[parent]->heap_index != parent)
         {
-            printf(
-                "INVALID HEAP_INDEX AT %d: %d\n",
-                (int)parent, heap[parent]->heap_index
-            );
+            printf("INVALID HEAP_INDEX AT %d: %d\n",
+                   (int)parent, heap[parent]->heap_index);
             return HHFALSE;
         }
 
         if (pq_compare(q, heap[parent]->data, heap[i]->data) < 0)
         {
-            printf(
-                "heap[%d] (%" PRId64 "), parent of heap[%d] (%" PRId64
-                ") INVALID\n",
-                parent, heap[parent]->data.i_val,
-                (int)i, heap[i]->data.i_val
-            );
+            printf("heap[%d] (%" PRId64 "), parent of heap[%d] (%" PRId64
+                   ") INVALID\n", parent, heap[parent]->data.i_val,
+                   (int)i, heap[i]->data.i_val);
             return HHFALSE;
         }
     }
@@ -382,7 +377,7 @@ void pqueue_iter_next(pqueue* q, pqueue_iterator* it)
     it->next = (it->current != NULL) ? it->current->next : NULL;
 }
 
-BOOL pqueue_iter_is_valid(pqueue* q, pqueue_iterator* it)
+HHBOOL pqueue_iter_is_valid(pqueue* q, pqueue_iterator* it)
 {
     hhunused(q);
     return (it->current != NULL);

@@ -14,11 +14,8 @@ static void on_message_received(server_conn* conn, endpoint_msg* msg)
     server_conn_send_msg(conn, msg);
 }
 
-static HHBOOL on_open(
-    server_conn* conn,
-    int* subprotocol_out,
-    int* extensions_out
-)
+static HHBOOL on_open(server_conn* conn, int* subprotocol_out, int*
+                      extensions_out)
 {
     hhunused(subprotocol_out);
     hhunused(extensions_out);
@@ -34,12 +31,8 @@ static HHBOOL on_open(
     return HHTRUE;
 }
 
-static void on_close(
-    server_conn* conn,
-    int code,
-    const char* reason,
-    int reason_len
-)
+static void on_close(server_conn* conn, int code, const char* reason, int
+                     reason_len)
 {
     hhunused(conn);
     hhunused(code);
@@ -63,7 +56,7 @@ static hhlog_options g_log_options =
     .loglevel = HHLOG_LEVEL_DEBUG,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = TRUE
+    .log_to_stdout = HHTRUE
 };
 
 int main(int argc, char** argv)

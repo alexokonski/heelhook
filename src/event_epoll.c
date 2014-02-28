@@ -43,8 +43,7 @@ static event_platform_result event_platform_create(event_loop* loop)
     platform_state* state = hhmalloc(sizeof(platform_state));
     if (state == NULL) return PLATFORM_RESULT_OUT_OF_MEMORY;
 
-    state->epoll_events = hhmalloc(
-        sizeof(struct epoll_event) * loop->num_events
+    state->epoll_events = hhmalloc(sizeof(struct epoll_event) * loop->num_events
     );
 
     if (state->epoll_events == NULL)
@@ -122,20 +121,13 @@ static event_platform_result event_platform_remove(event_loop* loop, int fd,
     return PLATFORM_RESULT_SUCCESS;
 }
 
-event_platform_result event_platform_poll(
-    event_loop* loop,
-    int timeout_msecs,
-    int* num_fired
-)
+event_platform_result event_platform_poll(event_loop* loop, int timeout_msecs,
+                                          int* num_fired)
 {
     platform_state* state = loop->platform_data;
 
-    int num_ready = epoll_wait(
-        state->epollfd,
-        state->epoll_events,
-        loop->num_events,
-        timeout_msecs
-    );
+    int num_ready = epoll_wait(state->epollfd, state->epoll_events,
+                               loop->num_events, timeout_msecs);
 
     (*num_fired) = num_ready;
 
