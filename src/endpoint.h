@@ -1,4 +1,4 @@
-/* endpoint - send/receive data as a client or a endpoint
+/* endpoint - send/receive data as a client or a server
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -56,10 +56,10 @@ typedef struct
     size_t write_pos;
     size_t read_pos;
     protocol_conn pconn;
-    HHBOOL close_received;
-    HHBOOL close_sent;
-    HHBOOL close_send_pending;
-    HHBOOL should_fail;
+    bool close_received;
+    bool close_sent;
+    bool close_send_pending;
+    bool should_fail;
     void* userdata;
 } endpoint;
 
@@ -81,12 +81,12 @@ typedef enum
 
 typedef struct
 {
-    HHBOOL is_text;
+    bool is_text;
     char* data;
     int64_t msg_len;
 } endpoint_msg;
 
-typedef HHBOOL (endpoint_on_open)(endpoint* conn, protocol_conn* proto_conn,
+typedef bool (endpoint_on_open)(endpoint* conn, protocol_conn* proto_conn,
                                   void* userdata);
 typedef void (endpoint_on_message)(endpoint* conn, endpoint_msg* msg,
                                    void* userdata);

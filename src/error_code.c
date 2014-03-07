@@ -30,15 +30,15 @@
 
 #include "error_code.h"
 
-HHBOOL is_error_valid(int err_code)
+bool is_error_valid(int err_code)
 {
     if (err_code < 1000 ||
         (err_code >= 1004 && err_code <= 1006) ||
         (err_code >= 1012 && err_code <= 1015) ||
         (err_code >= 1016 && err_code <= 2999))
     {
-        return HHFALSE;
+        return false;
     }
 
-    return HHTRUE;
+    return true;
 }

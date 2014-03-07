@@ -44,7 +44,7 @@ static hhlog_options g_default_options =
     .loglevel = HHLOG_LEVEL_INFO,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = HHTRUE
+    .log_to_stdout = true
 };
 
 static hhlog_options* g_current_options = &g_default_options;

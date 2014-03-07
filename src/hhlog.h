@@ -47,7 +47,7 @@ typedef struct
     hhlog_level loglevel; /* the current log level */
     char* syslogident; /* syslog ident to log to... don't use syslog if NULL */
     char* logfilepath; /* file path to log to... don't use a file if NULL */
-    HHBOOL log_to_stdout; /* log to stdout if HHTRUE */
+    bool log_to_stdout; /* log to stdout if true */
 } hhlog_options;
 
 /* stores a pointer to options */

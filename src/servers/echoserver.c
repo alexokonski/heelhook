@@ -14,7 +14,7 @@ static void on_message_received(server_conn* conn, endpoint_msg* msg)
     server_conn_send_msg(conn, msg);
 }
 
-static HHBOOL on_open(server_conn* conn, int* subprotocol_out, int*
+static bool on_open(server_conn* conn, int* subprotocol_out, int*
                       extensions_out)
 {
     hhunused(subprotocol_out);
@@ -28,7 +28,7 @@ static HHBOOL on_open(server_conn* conn, int* subprotocol_out, int*
     }
     printf("]\n\n");
 
-    return HHTRUE;
+    return true;
 }
 
 static void on_close(server_conn* conn, int code, const char* reason, int
@@ -56,7 +56,7 @@ static hhlog_options g_log_options =
     .loglevel = HHLOG_LEVEL_DEBUG,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = HHTRUE
+    .log_to_stdout = true
 };
 
 int main(int argc, char** argv)
@@ -77,7 +77,7 @@ int main(int argc, char** argv)
 
     config_server_options options;
     options.bindaddr = NULL;
-    options.max_clients = 1;
+    options.max_clients = 10;
 
     options.endp_settings.protocol_buf_init_len = 4 * 1024;
 

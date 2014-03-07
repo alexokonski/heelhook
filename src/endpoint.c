@@ -78,8 +78,8 @@ endpoint_write_result write_to_endpoint(endpoint* conn, int fd)
 
     while (conn->write_pos < buf_len)
     {
-        num_written = write(fd, &out_buf[conn->write_pos], buf_len -
-                            conn->write_pos);
+        size_t len = buf_len - conn->write_pos;
+        num_written = write(fd, &out_buf[conn->write_pos], len);
         if (num_written <= 0) break;
 
         if (num_written > 0)
@@ -104,7 +104,7 @@ endpoint_write_result write_to_endpoint(endpoint* conn, int fd)
     }
     else if (conn->write_pos == buf_len)
     {
-        if (conn->close_send_pending) conn->close_sent = HHTRUE;
+        if (conn->close_send_pending) conn->close_sent = true;
 
         /* if (conn->close_received && conn->close_sent) */
         if (conn->close_sent && (conn->should_fail || conn->close_received))
@@ -167,7 +167,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
             break;
         }
 
-        HHBOOL is_text = HHFALSE;
+        bool is_text = false;
         switch (r)
         {
         case PROTOCOL_RESULT_MESSAGE_FINISHED:
@@ -177,7 +177,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 hhassert(0);
                 break;
             case PROTOCOL_MSG_TEXT:
-                is_text = HHTRUE; /* fallthru */
+                is_text = true; /* fallthru */
             case PROTOCOL_MSG_BINARY:
                 smsg.data = msg.data;
                 smsg.msg_len = msg.msg_len;
@@ -210,8 +210,8 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                     }
                     endpoint_send_pmsg(conn, &msg);
                     pr = PARSE_CONTINUE_WROTE_DATA;
-                    conn->close_send_pending = HHTRUE;
-                    conn->close_received = HHTRUE;
+                    conn->close_send_pending = true;
+                    conn->close_received = true;
                 }
                 break;
             case PROTOCOL_MSG_PING:
@@ -236,7 +236,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
         case PROTOCOL_RESULT_FAIL:
             if (!conn->close_send_pending)
             {
-                conn->should_fail = HHTRUE;
+                conn->should_fail = true;
                 endpoint_close(conn, conn->pconn.error_code,
                                conn->pconn.error_msg, conn->pconn.error_len);
             }
@@ -404,10 +404,10 @@ static void endpoint_state_clear(endpoint* conn)
 {
     conn->write_pos = 0;
     conn->read_pos = 0;
-    conn->close_received = HHFALSE;
-    conn->close_sent = HHFALSE;
-    conn->close_send_pending = HHFALSE;
-    conn->should_fail = HHFALSE;
+    conn->close_received = false;
+    conn->close_sent = false;
+    conn->close_send_pending = false;
+    conn->should_fail = false;
 }
 
 /* reset buffers etc but don't deallocate  */
@@ -550,7 +550,7 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
         msg.data = orig_data;
         msg.msg_len = data_len;
         r = endpoint_send_pmsg(conn, &msg);
-        conn->close_send_pending = HHTRUE;
+        conn->close_send_pending = true;
 
         hhfree(orig_data);
         break;

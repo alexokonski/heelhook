@@ -152,7 +152,7 @@ void pqueue_iter_next(pqueue* q, pqueue_iterator* it);
  * Iterator iterface - is the iterator valid 
  * (used to check if you're at the end)
  */
-HHBOOL pqueue_iter_is_valid(pqueue* q, pqueue_iterator* it);
+bool pqueue_iter_is_valid(pqueue* q, pqueue_iterator* it);
 
 /*
  * Iterator interface - get the actual data for your iterator

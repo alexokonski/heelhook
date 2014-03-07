@@ -32,6 +32,7 @@
 #define __UTIL_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /* min/max */
 #define hhmin(x, y) (((x) <= (y)) ? (x) : (y))
@@ -48,10 +49,6 @@ uint32_t hh_ntohl(uint32_t netlong);
 uint16_t hh_ntohs(uint16_t netshort);
 uint64_t hh_htonll(uint64_t hostlonglong);
 uint64_t hh_ntohll(uint64_t netlonglong);
-
-typedef char HHBOOL;
-#define HHTRUE  1
-#define HHFALSE 0
 
 /* use this so we never inline in debug builds */
 #ifdef DEBUG

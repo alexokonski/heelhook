@@ -112,8 +112,8 @@ typedef struct
     int64_t payload_len; /* -1 means we're on a brand new frame */
     size_t data_start_pos;
     char masking_key[4];
-    HHBOOL fin;
-    HHBOOL masked;
+    bool fin;
+    bool masked;
 } protocol_frame_hdr;
 
 /* state needed across calls for ut8 validator */
@@ -359,8 +359,8 @@ protocol_result
 protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg);
 
 /* Convienence functions */
-HHBOOL protocol_is_data(protocol_msg_type msg_type);
-HHBOOL protocol_is_control(protocol_msg_type msg_type);
+bool protocol_is_data(protocol_msg_type msg_type);
+bool protocol_is_control(protocol_msg_type msg_type);
 
 #endif /* __PROTOCOL_H_ */
 

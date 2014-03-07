@@ -177,7 +177,7 @@ static void heap_insert(pqueue* q, pqueue_elem* elem)
 }
 
 #if 0
-static HHBOOL heap_validate(pqueue* q)
+static bool heap_validate(pqueue* q)
 {
     pqueue_elem** heap = darray_get_data(q->heap);
 
@@ -188,7 +188,7 @@ static HHBOOL heap_validate(pqueue* q)
         {
             printf("INVALID HEAP_INDEX AT %d: %d\n",
                    (int)parent, heap[parent]->heap_index);
-            return HHFALSE;
+            return false;
         }
 
         if (pq_compare(q, heap[parent]->data, heap[i]->data) < 0)
@@ -196,11 +196,11 @@ static HHBOOL heap_validate(pqueue* q)
             printf("heap[%d] (%" PRId64 "), parent of heap[%d] (%" PRId64
                    ") INVALID\n", parent, heap[parent]->data.i_val,
                    (int)i, heap[i]->data.i_val);
-            return HHFALSE;
+            return false;
         }
     }
 
-    return HHTRUE;
+    return true;
 }
 #else
 #define heap_validate(q)
@@ -377,7 +377,7 @@ void pqueue_iter_next(pqueue* q, pqueue_iterator* it)
     it->next = (it->current != NULL) ? it->current->next : NULL;
 }
 
-HHBOOL pqueue_iter_is_valid(pqueue* q, pqueue_iterator* it)
+bool pqueue_iter_is_valid(pqueue* q, pqueue_iterator* it)
 {
     hhunused(q);
     return (it->current != NULL);

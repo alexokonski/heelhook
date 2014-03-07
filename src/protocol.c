@@ -181,7 +181,7 @@ static HH_INLINE uint32_t utf8_decode(uint32_t* state, uint32_t* codep,
   return *state;
 }
 
-static HHBOOL is_valid_utf8(const char* str, int length)
+static bool is_valid_utf8(const char* str, int length)
 {
     uint32_t codepoint, state = 0;
     const uint8_t* s = (const uint8_t*)str;
@@ -195,7 +195,7 @@ static HHBOOL is_valid_utf8(const char* str, int length)
 }
 
 static void mask_data(char* data, size_t len, char* mask_key, int mask_index,
-                      HHBOOL validate_utf8, uint32_t* state,
+                      bool validate_utf8, uint32_t* state,
                       uint32_t* codepoint)
 {
     uint8_t* d = (uint8_t*)data;
@@ -212,7 +212,7 @@ static void mask_data(char* data, size_t len, char* mask_key, int mask_index,
 
 static void mask_and_move_data(char* dest, char* src, size_t len, char*
                                mask_key_ptr, int mask_index,
-                               HHBOOL validate_utf8, uint32_t* state,
+                               bool validate_utf8, uint32_t* state,
                                uint32_t* codepoint)
 {
     /*
@@ -436,7 +436,7 @@ static void handle_violation(protocol_conn* conn, uint16_t code,
 }
 
 static protocol_result
-protocol_parse_frame_hdr(protocol_conn* conn, HHBOOL expect_mask,
+protocol_parse_frame_hdr(protocol_conn* conn, bool expect_mask,
                          size_t* pos_ptr)
 {
     protocol_frame_hdr* hdr = &conn->frame_hdr;
@@ -1162,7 +1162,7 @@ const char* protocol_get_extension(protocol_conn* conn, int index)
  * is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is untouched.
  */
 static protocol_result
-protocol_read_msg(protocol_conn* conn, size_t* start_pos, HHBOOL expect_mask,
+protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
                   protocol_msg* read_msg)
 {
     size_t pos = *start_pos;
@@ -1184,9 +1184,9 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, HHBOOL expect_mask,
      */
     data = &raw_buffer[pos];
 
-    HHBOOL fin = hdr->fin;
-    HHBOOL msg_finished = HHFALSE;
-    HHBOOL frame_finished = HHFALSE;
+    bool fin = hdr->fin;
+    bool msg_finished = false;
+    bool frame_finished = false;
     protocol_opcode opcode = hdr->opcode;
     protocol_msg_type msg_type = hdr->msg_type;
     char* masking_key = (hdr->masked) ? hdr->masking_key : NULL;
@@ -1237,7 +1237,7 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, HHBOOL expect_mask,
                 conn->valid_state.state != UTF8_REJECT)
             {
                 hdr->payload_len = -1;
-                frame_finished = HHTRUE;
+                frame_finished = true;
             }
         }
         else
@@ -1277,7 +1277,7 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, HHBOOL expect_mask,
 
                 /* we just finished processing a frame... clear hdr */
                 hdr->payload_len = -1;
-                frame_finished = HHTRUE;
+                frame_finished = true;
             }
         }
 
@@ -1358,7 +1358,7 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, HHBOOL expect_mask,
                 conn->valid_state.state = 0;
                 conn->valid_state.codepoint = 0;
 
-                msg_finished = HHTRUE;
+                msg_finished = true;
             }
         }
         else
@@ -1387,7 +1387,7 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, HHBOOL expect_mask,
                 /* we just read a full message, reset the fragment counter */
                 conn->num_fragments_read = 0;
 
-                msg_finished = HHTRUE;
+                msg_finished = true;
             }
         }
 
@@ -1440,14 +1440,14 @@ protocol_result
 protocol_read_client_msg(protocol_conn* conn, size_t* start_pos,
                          protocol_msg* read_msg)
 {
-    return protocol_read_msg(conn, start_pos, HHTRUE, read_msg);
+    return protocol_read_msg(conn, start_pos, true, read_msg);
 }
 
 protocol_result
 protocol_read_server_msg(protocol_conn* conn, size_t* start_pos,
                          protocol_msg* read_msg)
 {
-    return protocol_read_msg(conn, start_pos, HHFALSE, read_msg);
+    return protocol_read_msg(conn, start_pos, false, read_msg);
 }
 
 static protocol_result
@@ -1597,7 +1597,7 @@ protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg)
     return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_CLIENT);
 }
 
-HHBOOL protocol_is_data(protocol_msg_type msg_type)
+bool protocol_is_data(protocol_msg_type msg_type)
 {
     switch (msg_type)
     {
@@ -1605,29 +1605,29 @@ HHBOOL protocol_is_data(protocol_msg_type msg_type)
         case PROTOCOL_MSG_CLOSE:
         case PROTOCOL_MSG_PING:
         case PROTOCOL_MSG_PONG:
-            return HHFALSE;
+            return false;
         case PROTOCOL_MSG_TEXT:
         case PROTOCOL_MSG_BINARY:
-            return HHTRUE;
+            return true;
         default:
-            return HHFALSE;
+            return false;
     }
 }
 
-HHBOOL protocol_is_control(protocol_msg_type msg_type)
+bool protocol_is_control(protocol_msg_type msg_type)
 {
     switch (msg_type)
     {
         case PROTOCOL_MSG_NONE:
         case PROTOCOL_MSG_TEXT:
         case PROTOCOL_MSG_BINARY:
-            return HHFALSE;
+            return false;
         case PROTOCOL_MSG_CLOSE:
         case PROTOCOL_MSG_PING:
         case PROTOCOL_MSG_PONG:
-            return HHTRUE;
+            return true;
         default:
-            return HHFALSE;
+            return false;
     }
 }
 
