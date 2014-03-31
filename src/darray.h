@@ -41,14 +41,14 @@ typedef struct darray darray;
  * make a darray.  init_size_reserved is the number of elements you want
  * space for right now.
  */
-darray* darray_create(size_t elem_size, int init_size_reserved);
+darray* darray_create(size_t elem_size, size_t init_size_reserved);
 
 /*
  * make a darray and initialize it with data.
  * init_size_reserved must be >= num_elemnts
  */
-darray* darray_create_data(void* data, size_t elem_size, int num_elements,
-                           int init_size_reserved);
+darray* darray_create_data(void* data, size_t elem_size, size_t num_elements,
+                           size_t init_size_reserved);
 
 /* create a new darray that's a copy of source */
 darray* darray_create_copy(const darray* source);
@@ -66,7 +66,7 @@ void* darray_get_data(darray* array);
 size_t darray_get_len(darray* array);
 
 /* get the number of additional elements available*/
-int darray_get_size_reserved(darray* array);
+size_t darray_get_size_reserved(darray* array);
 
 /* clear out the darray - set the len to 0 */
 void darray_clear(darray* array);
@@ -75,7 +75,7 @@ void darray_clear(darray* array);
  * make the darray equal to the range [start, end).  if end is -1,
  * slice to the end of the darrray
  */
-void darray_slice(darray* array, int start, int end);
+void darray_slice(darray* array, size_t start, ssize_t end);
 
 /*
  * ensure the darray has room for this many additional elements. usage:
@@ -84,23 +84,31 @@ void darray_slice(darray* array, int start, int end);
  *
  * returns the new data pointer for array (darray_get_data)
  */
-void* darray_ensure(darray** array, int num_elems);
+void* darray_ensure(darray** array, size_t num_elems);
 
 /* add to the length of the darray - just arithmetic, doesn't move memory */
-void darray_add_len(darray* array, int num_elems);
+void darray_add_len(darray* array, size_t num_elems);
+
+/*
+ * subtract from the length of the darray - just arithmetic, doesn't move
+ * memory
+ */
+void darray_sub_len(darray* array, size_t num_elems);
 
 /*
  * append some elements to the array, expanding if needed. usage:
  *
  * darray_append(&my_array, my_data, 10);
+ *
+ * returns the new data pointer for array (darray_get_data)
  */
-void darray_append(darray** array, const void* data, int num_elems);
+void* darray_append(darray** array, const void* data, size_t num_elems);
 
-/* get element by index */
-void* darray_get_elem(darray* array, int index);
+/* get element address by index */
+void* darray_get_elem_addr(darray* array, size_t index);
 
-/* return the last element of the darray */
-void* darray_get_last(darray* array);
+/* return the last element address of the darray */
+void* darray_get_last_addr(darray* array);
 
 #endif /* __DARRAY_H_ */
 

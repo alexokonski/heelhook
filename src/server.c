@@ -49,10 +49,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#define SERVER_MAX_LOG_LENGTH 1024
-#define SERVER_HEADER_READ_LENGTH (1024 * 2)
-#define SERVER_MAX_READ_LENGTH (1024 * 64)
-#define SERVER_MAX_WRITE_LENGTH (1024 * 64)
 #define SERVER_LISTEN_BACKLOG 512
 #define SERVER_WATCHDOG_FREQ_MS 5
 
@@ -77,7 +73,8 @@ struct server
     server_conn* free_tail;
     event_loop* loop;
     config_server_options options;
-    server_callbacks callbacks;
+    server_callbacks cbs;
+    void* userdata;
 };
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data);
@@ -95,7 +92,7 @@ static void server_on_close_callback(endpoint* conn_info, int code,
                                      const char* reason, int reason_len,
                                      void* userdata);
 
-static endpoint_callbacks g_endpoint_cbs =
+static endpoint_callbacks g_server_cbs =
 {
     .on_open_callback = server_on_open_callback,
     .on_message_callback = server_on_message_callback,
@@ -107,7 +104,7 @@ static int init_conn(server_conn* conn, server* serv)
 {
     conn->serv = serv;
     int r = endpoint_init(&conn->endp, ENDPOINT_SERVER,
-                          &serv->options.endp_settings, &g_endpoint_cbs, conn);
+                          &serv->options.endp_settings, &g_server_cbs, conn);
 
     return r;
 }
@@ -153,9 +150,9 @@ static void server_on_ping_callback(endpoint* conn_info, char* payload,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
-    if (serv->callbacks.on_ping_callback != NULL)
+    if (serv->cbs.on_ping_callback != NULL)
     {
-        serv->callbacks.on_ping_callback(conn, payload, payload_len);
+        serv->cbs.on_ping_callback(conn, payload, payload_len, serv->userdata);
     }
 }
 
@@ -168,9 +165,10 @@ static void server_on_close_callback(endpoint* conn_info, int code,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
-    if (serv->callbacks.on_close_callback != NULL)
+    if (serv->cbs.on_close_callback != NULL)
     {
-        serv->callbacks.on_close_callback(conn, code, reason, reason_len);
+        serv->cbs.on_close_callback(conn, code, reason, reason_len,
+                                    serv->userdata);
     }
 
     /* take this client out of the event loop */
@@ -200,23 +198,25 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
 {
     server_conn* conn = data;
 
-    endpoint_write_result r = write_to_endpoint(&conn->endp, fd);
+    endpoint_write_result r = endpoint_write(&conn->endp, fd);
     switch (r)
     {
     case ENDPOINT_WRITE_CONTINUE:
-        break;
+        return;
     case ENDPOINT_WRITE_DONE:
         /*
          * done writing to the client for now, don't call this again until
          * there's more data to be sent
          */
         event_delete_io_event(loop, fd, EVENT_WRITEABLE);
-        break;
+        return;
     case ENDPOINT_WRITE_ERROR:
     case ENDPOINT_WRITE_CLOSED:
         /* proper callback will have been called */
-        break;
+        return;
     }
+
+    hhassert(0);
 }
 
 static bool
@@ -230,14 +230,15 @@ server_on_open_callback(endpoint* conn_info,
     server* serv = conn->serv;
     int* extensions_out = NULL;
     const char** extensions = NULL;
+    char* subprotocol = NULL;
 
     /* initialize output params */
     int subprotocol_out = -1;
-    int num_extensions = server_get_num_client_extensions(conn);
+    unsigned num_extensions = server_get_num_client_extensions(conn);
     if (num_extensions > 0)
     {
         extensions_out = hhmalloc(num_extensions * sizeof(*extensions_out));
-        for (int i = 0; i < num_extensions; i++)
+        for (unsigned i = 0; i < num_extensions; i++)
         {
             extensions_out[i] = -1;
         }
@@ -247,30 +248,30 @@ server_on_open_callback(endpoint* conn_info,
      * allow users of this interface to reject or pick
      * subprotocols/extensions
      */
-    if (serv->callbacks.on_open_callback != NULL &&
-        !serv->callbacks.on_open_callback(conn, &subprotocol_out,
-                                          extensions_out)
+    if (serv->cbs.on_open_callback != NULL &&
+        !serv->cbs.on_open_callback(conn, &subprotocol_out, extensions_out,
+                                    serv->userdata)
     )
     {
         goto reject_client;
     }
 
-    char* subprotocol = NULL;
     if (subprotocol_out >= 0)
     {
-        server_get_client_subprotocol(conn, subprotocol_out);
+        server_get_client_subprotocol(conn, (unsigned)subprotocol_out);
     }
 
     if (extensions_out != NULL && extensions_out[0] >= 0)
     {
         /* +1 for terminating NULL */
         extensions = hhmalloc((num_extensions + 1) * sizeof(*extensions));
-        int e = 0;
+        unsigned e = 0;
         for (e = 0; e < num_extensions; e++)
         {
             if (extensions_out[e] < 0) break;
+            unsigned out = (unsigned)extensions_out[e];
             extensions[e] =
-                (char*)server_get_client_extension(conn, extensions_out[e]);
+                (char*)server_get_client_extension(conn, out);
         }
         extensions[e] = NULL;
     }
@@ -326,9 +327,9 @@ static void server_on_message_callback(endpoint* conn_info, endpoint_msg* msg,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
-    if (serv->callbacks.on_message_callback != NULL)
+    if (serv->cbs.on_message_callback != NULL)
     {
-        serv->callbacks.on_message_callback(conn, msg);
+        serv->cbs.on_message_callback(conn, msg, serv->userdata);
     }
 }
 
@@ -338,18 +339,18 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
     server_conn* conn = data;
 
     event_result er;
-    endpoint_read_result r = read_from_endpoint(&conn->endp, fd);
+    endpoint_read_result r = endpoint_read(&conn->endp, fd);
     switch (r)
     {
     case ENDPOINT_READ_SUCCESS:
-        break;
+        return;
     case ENDPOINT_READ_SUCCESS_WROTE_DATA:
         er = queue_write(conn);
         if (er != EVENT_RESULT_SUCCESS)
         {
             hhlog_log(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
         }
-        break;
+        return;
     case ENDPOINT_READ_ERROR:
     case ENDPOINT_READ_CLOSED:
         /*
@@ -357,8 +358,10 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
          * callback
          */
         event_delete_io_event(loop, fd, EVENT_READABLE);
-        break;
+        return;
     }
+
+    hhassert(0);
 }
 
 static void accept_callback(event_loop* loop, int fd, void* data)
@@ -395,8 +398,8 @@ static void accept_callback(event_loop* loop, int fd, void* data)
     }
 }
 
-server* server_create(config_server_options* options, server_callbacks*
-                      callbacks)
+server* server_create(config_server_options* options,
+                      server_callbacks* callbacks, void* userdata)
 {
     int i = 0;
     server* serv = hhmalloc(sizeof(*serv));
@@ -407,10 +410,12 @@ server* server_create(config_server_options* options, server_callbacks*
     serv->active_tail = NULL;
     serv->free_head = NULL;
     serv->free_tail = NULL;
-    serv->callbacks = *callbacks;
+    serv->cbs = *callbacks;
     serv->options = *options;
+    serv->userdata = userdata;
     int max_clients = options->max_clients;
-    serv->connections = hhmalloc(max_clients * sizeof(server_conn));
+    hhassert(max_clients >= 0);
+    serv->connections = hhmalloc((size_t)max_clients * sizeof(server_conn));
     if (serv->connections == NULL) goto err_create;
 
     serv->loop = event_create_loop(options->max_clients + 1024);
@@ -567,8 +572,8 @@ server_result server_conn_send_pong(server_conn* conn, char* payload, int
  * close this connection. sends a close message with the error
  * code and reason
  */
-server_result server_conn_close(server_conn* conn, uint16_t code, const char*
-                                reason, int reason_len)
+server_result server_conn_close(server_conn* conn, uint16_t code,
+                                const char* reason, int reason_len)
 {
     endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
 
@@ -585,7 +590,7 @@ server_result server_conn_close(server_conn* conn, uint16_t code, const char*
 /*
  * get number of subprotocols the client reported they support
  */
-int server_get_num_client_subprotocols(server_conn* conn)
+unsigned server_get_num_client_subprotocols(server_conn* conn)
 {
     return protocol_get_num_subprotocols(&conn->endp.pconn);
 }
@@ -593,7 +598,7 @@ int server_get_num_client_subprotocols(server_conn* conn)
 /*
  * get a subprotocol the client reported they support
  */
-const char* server_get_client_subprotocol(server_conn* conn, int index)
+const char* server_get_client_subprotocol(server_conn* conn, unsigned index)
 {
     return protocol_get_subprotocol(&conn->endp.pconn, index);
 }
@@ -601,7 +606,7 @@ const char* server_get_client_subprotocol(server_conn* conn, int index)
 /*
  * get number of extensions the client reported they support
  */
-int server_get_num_client_extensions(server_conn* conn)
+unsigned server_get_num_client_extensions(server_conn* conn)
 {
     return protocol_get_num_extensions(&conn->endp.pconn);
 }
@@ -609,7 +614,7 @@ int server_get_num_client_extensions(server_conn* conn)
 /*
  * get an extension the client reported they support
  */
-const char* server_get_client_extension(server_conn* conn, int index)
+const char* server_get_client_extension(server_conn* conn, unsigned index)
 {
     return protocol_get_extension(&conn->endp.pconn, index);
 }
@@ -645,7 +650,7 @@ server_result server_listen(server* serv)
     addr.sin_port = htons(opt->port);
     addr.sin_addr.s_addr = hh_htonl(INADDR_ANY);
     if (opt->bindaddr != NULL &&
-        inet_aton(opt->bindaddr, &addr.sin_addr) != 0)
+        inet_aton(opt->bindaddr, &addr.sin_addr) == 0)
     {
         hhlog_log(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
                   opt->bindaddr);

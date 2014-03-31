@@ -42,7 +42,7 @@ static const struct
     const char* name;
     const char* send_value;
     const char* values[3];
-    int value_index_start;
+    unsigned value_index_start;
 } g_headers[] = {
     {"Host", "server.example.com", {"server.example.com", NULL}, 0},
     {"Upgrade", "websocket", {"websocket", NULL}, 0},
@@ -73,7 +73,6 @@ static char TEST_RESPONSE[] =
 static const char* extra_headers[] =
 {
     "Origin", "http://example.com",
-    "Host", "server.example.com",
     NULL
 };
 
@@ -109,12 +108,12 @@ static const unsigned char TEST_SERVER_FRAG_2[] =
 /* the same message as TEST_SERVER_FRAG_* but sent from a client */
 static const unsigned char TEST_CLIENT_FRAG_3[] =
 {
-    0x01, 0x83, 't', 'h', 'e', ' ', 0x48, 0x65, 0x6c
+    0x01, 0x83, 't', 'h', 'e', ' ', 0x3c, 0x0d, 0x09
 };
 
 static const unsigned char TEST_CLIENT_FRAG_4[] =
 {
-    0x80, 0x82, 's', 'a', 'm', 'p', 0x6c, 0x6f
+    0x80, 0x82, 's', 'a', 'm', 'p', 0x1f, 0x0e
 };
 
 static const char g_nonce[] = "the sample nonce";
@@ -168,7 +167,7 @@ static void compare_headers(protocol_conn* conn, const char* test)
 
         for (int j = 0; g_headers[i].values[j] != NULL; j++)
         {
-            int index = g_headers[i].value_index_start + j;
+            unsigned index = g_headers[i].value_index_start + j;
             if (index >= protocol_get_num_header_values(conn, name))
             {
                 printf(
@@ -502,6 +501,7 @@ int main(int argc, char** argv)
     hr = protocol_write_handshake_request(
         conn,
         RESOURCE_NAME,
+        "server.example.com",
         TEST_PROTOCOLS,
         TEST_EXTENSIONS,
         extra_headers

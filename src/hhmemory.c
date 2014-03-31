@@ -30,7 +30,7 @@
  */
 
 #include <stdlib.h>
-#include "memory.h"
+#include "hhmemory.h"
 
 void* hhmalloc(size_t size)
 {

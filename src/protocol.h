@@ -98,9 +98,9 @@ typedef struct
 /* represents a WebSocket message, but the data is a pos in some buffer */
 typedef struct
 {
-    protocol_msg_type type;
-    int64_t msg_len;
     size_t start_pos;
+    int64_t msg_len;
+    protocol_msg_type type;
 } protocol_offset_msg;
 
 /* represents a WebSocket frame header */
@@ -168,14 +168,16 @@ struct protocol_conn
     /* settings for this connection */
     protocol_settings* settings;
 
-    /* current state of this connection */
-    protocol_state state;
-
     /* char* buffer used for reading from an endpoint */
     darray* read_buffer;
 
     /* char* buffer used for writing to a endpoint */
     darray* write_buffer;
+
+    /* current state of this connection */
+    protocol_state state;
+
+    int error_len;
 
     /* fragmented msg we're currently reading from a endpoint */
     protocol_offset_msg frag_msg;
@@ -200,7 +202,6 @@ struct protocol_conn
      * contains a message to send to endpoint upon closing
      */
     const char* error_msg;
-    int error_len;
 
     /*
      * if protocol_read_msg returns PROTOCOL_RESULT_FAIL, 
@@ -259,9 +260,9 @@ protocol_read_handshake_request(protocol_conn* conn);
  */
 protocol_handshake_result
 protocol_write_handshake_response(
-            protocol_conn* conn, 
-            const char* protocol, /* (optional) */
-            const char** extensions /* NULL terminated (optional) */
+    protocol_conn* conn,
+    const char* protocol, /* (optional) */
+    const char** extensions /* NULL terminated (optional) */
 );
 
 /*
@@ -275,50 +276,52 @@ protocol_read_handshake_response(protocol_conn* conn);
 /*
  * write the client handshake request to conn->write_buffer. On success,
  * advances state to PROTOCOL_STATE_READ_HANDSHAKE.  extra_headers is 
- * in (key,value) order
+ * repeating (key,value) pairs with a terminating NULL
  */
 protocol_handshake_result
 protocol_write_handshake_request(
-        protocol_conn* conn, const char* resource, 
-        const char** protocols, /* NULL terminated (optional) */
-        const char** extensions, /* NULL terminated (optional) */
-        const char** extra_headers /* NULL terminated, (optional) */
+    protocol_conn* conn,
+    const char* resource,
+    const char* host,
+    const char** protocols, /* NULL terminated (optional) */
+    const char** extensions, /* NULL terminated (optional) */
+    const char** extra_headers /* NULL terminated, (optional) */
 );
 
 /*
  * Get the number of times this header appeared in the request
  */
-int protocol_get_num_header_values(protocol_conn* conn, const char* name);
+unsigned protocol_get_num_header_values(protocol_conn* conn, const char* name);
 
 /*
  * Get one of the values retrieved for a header
  */
 const char* protocol_get_header_value(protocol_conn* conn, const char* name,
-                                      int index);
+                                      unsigned index);
 
 /*
  * Helper for easily getting the number of values the endpoint sent in the
  * Sec-WebSocket-Protocol header
  */
-int protocol_get_num_subprotocols(protocol_conn* conn);
+unsigned protocol_get_num_subprotocols(protocol_conn* conn);
 
 /*
  * Helper for getting values of the Sec-WebSocket-Protocol header sent by
  * the endpoint
  */
-const char* protocol_get_subprotocol(protocol_conn* conn, int index);
+const char* protocol_get_subprotocol(protocol_conn* conn, unsigned index);
 
 /*
  * Helper for easily getting the number of values the client sent in the
  * Sec-WebSocket-Extensions header
  */
-int protocol_get_num_extensions(protocol_conn* conn);
+unsigned protocol_get_num_extensions(protocol_conn* conn);
 
 /*
  * Helper for getting values of the Sec-WebSocket-Extensions header sent by
  * the client
  */
-const char* protocol_get_extension(protocol_conn* conn, int index);
+const char* protocol_get_extension(protocol_conn* conn, unsigned index);
 
 /*
  * process a frame sent by a client from the read buffer starting at start_pos

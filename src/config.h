@@ -31,12 +31,13 @@
 #ifndef __CONFIG_H_
 #define __CONFIG_H_
 
+#include <stdint.h>
 #include "endpoint.h"
 
 typedef struct
 {
     char* bindaddr; /* addr to bind to, if NULL, all interfaces */
-    int port; /* port the server will listen on */
+    uint16_t port; /* port the server will listen on */
     endpoint_settings endp_settings; /* endpoint settings */
     int max_clients; /* max clients we allow connected */
 } config_server_options;

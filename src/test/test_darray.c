@@ -60,7 +60,7 @@ static void test_len(
 
 static void test_size_reserved(
     darray* array,
-    int size_reserved,
+    size_t size_reserved,
     const char* test,
     const char* file,
     int line
@@ -92,7 +92,7 @@ static void test_get_last(
     int line
 )
 {
-    int result = memcmp(darray_get_last(array), data, data_len);
+    int result = memcmp(darray_get_last_addr(array), data, data_len);
     EXIT_IF_FAIL(result == 0, test, file, line);
 }
 

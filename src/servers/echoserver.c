@@ -9,20 +9,24 @@
 
 static server* g_serv = NULL;
 
-static void on_message_received(server_conn* conn, endpoint_msg* msg)
+static void on_message_received(server_conn* conn, endpoint_msg* msg,
+                                void* userdata)
 {
+    hhunused(userdata);
     server_conn_send_msg(conn, msg);
 }
 
-static bool on_open(server_conn* conn, int* subprotocol_out, int*
-                      extensions_out)
+static bool
+on_open(server_conn* conn, int* subprotocol_out, int* extensions_out,
+        void* userdata)
 {
     hhunused(subprotocol_out);
     hhunused(extensions_out);
     hhunused(conn);
-    int num_protocols = server_get_num_client_subprotocols(conn);
+    hhunused(userdata);
+    unsigned num_protocols = server_get_num_client_subprotocols(conn);
     printf("Got subprotocols [\n");
-    for (int i = 0; i < num_protocols; i++)
+    for (unsigned i = 0; i < num_protocols; i++)
     {
         printf("    %s\n", server_get_client_subprotocol(conn, i));
     }
@@ -31,13 +35,15 @@ static bool on_open(server_conn* conn, int* subprotocol_out, int*
     return true;
 }
 
-static void on_close(server_conn* conn, int code, const char* reason, int
-                     reason_len)
+static void
+on_close(server_conn* conn, int code, const char* reason, int reason_len,
+         void* userdata)
 {
     hhunused(conn);
     hhunused(code);
     hhunused(reason);
     hhunused(reason_len);
+    hhunused(userdata);
     printf("Got close: (%d, %.*s)\n", code, (int)reason_len, reason);
 }
 
@@ -85,7 +91,8 @@ int main(int argc, char** argv)
     conn_settings->write_max_frame_size = 20 * 1024 * 1024;
     conn_settings->read_max_msg_size = 20 * 1024 * 1024;
     conn_settings->read_max_num_frames = 20 * 1024 * 1024;
-    options.port = atoi(argv[1]);
+    conn_settings->rand_func = NULL;
+    options.port = (uint16_t)atoi(argv[1]);
 
     server_callbacks callbacks;
     callbacks.on_open_callback = on_open;
@@ -95,7 +102,7 @@ int main(int argc, char** argv)
 
     hhlog_set_options(&g_log_options);
 
-    g_serv = server_create(&options, &callbacks);
+    g_serv = server_create(&options, &callbacks, NULL);
 
     server_listen(g_serv);
 

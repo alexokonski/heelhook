@@ -6,13 +6,15 @@ SYMBOL= -D_BSD_SOURCE -D_POSIX_C_SOURCE
 VPATH= test sha1 base64 servers
 EXT_SYMBOL=
 
-FINAL_CFLAGS = $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(EXT_SYMBOL) $(CFLAGS)
-FINAL_LDFLAGS = $(LDFLAGS) -g -ggdb
-TEST_LIBS = -pthread
-HEELHOOK_OBJECTS = hhmemory.o event.o darray.o protocol.o sha1.o cencode.o util.o server.o error_code.o pqueue.o endpoint.o hhlog.o
+FINAL_CFLAGS= $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(EXT_SYMBOL) $(CFLAGS)
+FINAL_LDFLAGS= $(LDFLAGS) -g -ggdb
+TEST_LIBS= -pthread
+ENDPOINT_OBJECTS= hhmemory.o darray.o protocol.o sha1.o cencode.o util.o error_code.o endpoint.o hhlog.o
+HEELHOOK_OBJECTS= $(ENDPOINT_OBJECTS) event.o server.o pqueue.o
+TEST_CC= $(CC) $(TEST_LIBS) -o $@ $^
 
 .PHONY: all
-all: heelhook echoserver test
+all: heelhook echoserver test_client test
 
 .PHONY: debug
 debug: 
@@ -31,22 +33,25 @@ test: test_event test_darray test_protocol test_util test_pqueue
 	@(bash runtests.sh $^)
 
 test_event: test_event.o event.o pqueue.o hhmemory.o util.o darray.o
-	$(CC) $(TEST_LIBS) -o $@ $^
+	$(TEST_CC)
 
 test_darray: test_darray.o darray.o hhmemory.o util.o
-	$(CC) $(TEST_LIBS) -o $@ $^
+	$(TEST_CC)
 
 test_protocol: test_protocol.o darray.o protocol.o error_code.o hhmemory.o util.o sha1.o cencode.o
-	$(CC) $(TEST_LIBS) -o $@ $^
+	$(TEST_CC)
 
 test_util: test_util.o util.o
-	$(CC) $(TEST_LIBS) -o $@ $^
+	$(TEST_CC)
 
 test_pqueue: test_pqueue.o pqueue.o darray.o hhmemory.o
-	$(CC) $(TEST_LIBS) -o $@ $^
+	$(TEST_CC)
+
+test_client: $(ENDPOINT_OBJECTS) client.o test_client.o event.o pqueue.o
+	$(TEST_CC)
 
 echoserver: echoserver.o $(HEELHOOK_OBJECTS)
-	$(CC) -o $@ $^
+	$(TEST_CC)
 
 include Makefile.dep
 
@@ -65,4 +70,5 @@ clean:
 	rm -f test_protocol
 	rm -f test_util
 	rm -f test_pqueue
+	rm -f test_client
 

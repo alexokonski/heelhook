@@ -81,14 +81,13 @@ void hhlog_log(hhlog_level level, const char* format, ...)
     struct timeval tv;
     char time_buffer[64];
     gettimeofday(&tv, NULL);
-    int num_written = strftime(time_buffer, sizeof(time_buffer),
+    int num_written = (int)strftime(time_buffer, sizeof(time_buffer),
         "%d %b %H:%M:%S.",
         localtime(&tv.tv_sec)
     );
-    num_written += snprintf(&time_buffer[num_written], sizeof(time_buffer) - num_written,
-        "%03d",
-        (int)tv.tv_usec / 1000
-    );
+    num_written += snprintf(&time_buffer[num_written],
+                            sizeof(time_buffer) - (size_t)num_written, "%03d",
+                            (int)tv.tv_usec / 1000);
 
     char* level_str = NULL;
     int syslog_level = HHLOG_LEVEL_INFO;
@@ -123,10 +122,9 @@ void hhlog_log(hhlog_level level, const char* format, ...)
 
     va_list list;
     va_start(list, format);
-    num_written += vsnprintf(&buffer[num_written], (int)sizeof(buffer) - num_written,
-        format,
-        list
-    );
+    num_written += vsnprintf(&buffer[num_written],
+                             sizeof(buffer) - (size_t)num_written, format,
+                             list);
     va_end(list);
 
     if (fp != NULL)

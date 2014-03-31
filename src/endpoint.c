@@ -46,12 +46,9 @@
 #include <time.h>
 #include <unistd.h>
 
-#define ENDPOINT_MAX_LOG_LENGTH 1024
 #define ENDPOINT_HEADER_READ_LENGTH (1024 * 2)
 #define ENDPOINT_MAX_READ_LENGTH (1024 * 64)
 #define ENDPOINT_MAX_WRITE_LENGTH (1024 * 64)
-#define ENDPOINT_LISTEN_BACKLOG 512
-#define ENDPOINT_WATCHDOG_FREQ_MS 5
 
 static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg);
 
@@ -66,7 +63,7 @@ static void deactivate_conn(endpoint* conn)
     }
 }
 
-endpoint_write_result write_to_endpoint(endpoint* conn, int fd)
+endpoint_write_result endpoint_write(endpoint* conn, int fd)
 {
     endpoint_write_result result = ENDPOINT_WRITE_CONTINUE;
     protocol_conn* pconn = &conn->pconn;
@@ -84,10 +81,11 @@ endpoint_write_result write_to_endpoint(endpoint* conn, int fd)
 
         if (num_written > 0)
         {
-            /*hhlog_log(HHLOG_LEVEL_DEBUG, "WROTE %lu bytes", buf_len -
+            /*printf("WRITTEN: %.*s\n", (int)len, &out_buf[conn->write_pos]);
+            hhlog_log(HHLOG_LEVEL_DEBUG, "WROTE %lu bytes", buf_len -
                         conn->write_pos);*/
         }
-        conn->write_pos += num_written;
+        conn->write_pos += (size_t)num_written;
         total_written += num_written;
 
         /* don't want to block for too long here writing stuff... */
@@ -96,7 +94,7 @@ endpoint_write_result write_to_endpoint(endpoint* conn, int fd)
 
     if (num_written == -1)
     {
-        hhlog_log(HHLOG_LEVEL_WARNING, "Error writing to client. fd: %d,"
+        hhlog_log(HHLOG_LEVEL_WARNING, "Error writing to endpoint. fd: %d,"
                   "error: %s", fd, strerror(errno)
         );
         deactivate_conn(conn);
@@ -149,6 +147,23 @@ typedef enum
     PARSE_CLOSE
 } parse_result;
 
+static endpoint_read_result
+parse_result_to_endpoint_read_result(parse_result pr)
+{
+    switch (pr)
+    {
+    case PARSE_CONTINUE:
+        return ENDPOINT_READ_SUCCESS;
+    case PARSE_CONTINUE_WROTE_DATA:
+        return ENDPOINT_READ_SUCCESS_WROTE_DATA;
+    case PARSE_CLOSE:
+        return ENDPOINT_READ_CLOSED;
+    }
+
+    hhassert(0);
+    return ENDPOINT_READ_ERROR;
+}
+
 static parse_result parse_endpoint_messages(endpoint* conn)
 {
     protocol_result r = PROTOCOL_RESULT_MESSAGE_FINISHED;
@@ -189,6 +204,20 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 }
                 break;
             case PROTOCOL_MSG_CLOSE:
+                if (msg.msg_len >= (int)sizeof(uint16_t))
+                {
+                    uint16_t code;
+                    memcpy(&code, msg.data, sizeof(code));
+                    conn->pconn.error_code = hh_ntohs(code);
+
+                    conn->pconn.error_msg =
+                        (msg.msg_len > (int)sizeof(uint16_t))
+                            ? (msg.data + sizeof(uint16_t))
+                            : NULL;
+                    conn->pconn.error_len =
+                        (int)msg.msg_len - (int)sizeof(uint16_t);
+                }
+
                 if (conn->close_sent)
                 {
                     deactivate_conn(conn);
@@ -196,18 +225,6 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 }
                 else
                 {
-                    if (msg.msg_len >= (int)sizeof(uint16_t))
-                    {
-                        uint16_t code = *((uint16_t*)msg.data);
-                        conn->pconn.error_code = hh_ntohs(code);
-
-                        conn->pconn.error_msg =
-                            (msg.data != NULL)
-                                ? (msg.data + sizeof(uint16_t))
-                                : NULL;
-                        conn->pconn.error_len =
-                            msg.msg_len - sizeof(uint16_t);
-                    }
                     endpoint_send_pmsg(conn, &msg);
                     pr = PARSE_CONTINUE_WROTE_DATA;
                     conn->close_send_pending = true;
@@ -218,7 +235,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 if (conn->callbacks->on_ping_callback != NULL)
                 {
                     conn->callbacks->on_ping_callback(conn, msg.data,
-                                                      msg.msg_len,
+                                                      (int)msg.msg_len,
                                                       conn->userdata);
                 }
                 msg.type = PROTOCOL_MSG_PONG;
@@ -307,7 +324,7 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
     return ENDPOINT_READ_SUCCESS;
 }
 
-endpoint_read_result read_from_endpoint(endpoint* conn, int fd)
+endpoint_read_result endpoint_read(endpoint* conn, int fd)
 {
     protocol_conn* pconn = &conn->pconn;
 
@@ -334,36 +351,39 @@ endpoint_read_result read_from_endpoint(endpoint* conn, int fd)
     }
     else
     {
-        read_len = hhmin(pconn->settings->read_max_msg_size,
+        read_len = hhmin((size_t)pconn->settings->read_max_msg_size,
                          ENDPOINT_MAX_READ_LENGTH);
         read_buffer = &pconn->read_buffer;
     }
 
-    ssize_t num_read = 0;
-    int end_pos = darray_get_len((*read_buffer));
+    size_t end_pos = darray_get_len((*read_buffer));
 
     char* buf = darray_ensure(read_buffer, read_len);
     buf = &buf[end_pos];
 
-    num_read = read(fd, buf, read_len);
+    ssize_t num_read = read(fd, buf, read_len);
 
     if (num_read == -1)
     {
         hhlog_log(HHLOG_LEVEL_WARNING,
-                  "Error reading from client. fd: %d, error: %s",
+                  "Error reading from endpoint. fd: %d, error: %s",
                   fd, strerror(errno));
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     }
     else if (num_read == 0)
     {
-        hhlog_log(HHLOG_LEVEL_INFO, "Client closed connection. fd: %d", fd);
+        hhlog_log(HHLOG_LEVEL_INFO, "Endpoint closed connection. fd: %d", fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     }
     /* else ... */
 
-    darray_add_len((*read_buffer), num_read);
+    /*hhlog_log(HHLOG_LEVEL_DEBUG, "READ %lu bytes: %.*s", num_read,
+              (int)num_read, buf);*/
+
+    hhassert(num_read > 0);
+    darray_add_len((*read_buffer), (size_t)num_read);
 
     endpoint_read_result r = ENDPOINT_READ_SUCCESS;
     parse_result pr = PARSE_CONTINUE;
@@ -372,6 +392,16 @@ endpoint_read_result read_from_endpoint(endpoint* conn, int fd)
     case PROTOCOL_STATE_READ_HANDSHAKE:
         /* fd used only for logging, message is read off of buffers in conn */
         r = read_handshake(conn, fd);
+
+        /*
+         * if the handshake read caused us to become connected, it's possible
+         * there are already messages to parse
+         */
+        if (pconn->state == PROTOCOL_STATE_CONNECTED)
+        {
+            pr = parse_endpoint_messages(conn);
+            r = parse_result_to_endpoint_read_result(pr);
+        }
         break;
     case PROTOCOL_STATE_WRITE_HANDSHAKE:
         hhlog_log(HHLOG_LEVEL_WARNING,
@@ -382,18 +412,7 @@ endpoint_read_result read_from_endpoint(endpoint* conn, int fd)
     case PROTOCOL_STATE_CONNECTED:
         /*hhlog_log(HHLOG_LEVEL_DEBUG, "read %lu msg bytes", num_read);*/
         pr = parse_endpoint_messages(conn);
-        switch (pr)
-        {
-        case PARSE_CONTINUE:
-            r = ENDPOINT_READ_SUCCESS;
-            break;
-        case PARSE_CONTINUE_WROTE_DATA:
-            r = ENDPOINT_READ_SUCCESS_WROTE_DATA;
-            break;
-        case PARSE_CLOSE:
-            r = ENDPOINT_READ_CLOSED;
-            break;
-        }
+        r = parse_result_to_endpoint_read_result(pr);
         break;
     }
 
@@ -439,6 +458,33 @@ endpoint_send_handshake_response(
     return ENDPOINT_RESULT_SUCCESS;
 }
 
+/* send a handshake request (only applies to client endpoints) */
+endpoint_result
+endpoint_send_handshake_request(
+    endpoint* conn,
+    const char* resource,
+    const char* host,
+    const char** protocols, /* NULL terminated (optional) */
+    const char** extensions, /* NULL terminated (optional) */
+    const char** extra_headers /* NULL terminated, (optional) */
+)
+{
+    hhassert(conn->type == ENDPOINT_CLIENT);
+
+    protocol_handshake_result hr;
+    hr = protocol_write_handshake_request(&conn->pconn, resource, host,
+                                          protocols, extensions,
+                                          extra_headers);
+
+    if (hr != PROTOCOL_HANDSHAKE_SUCCESS)
+    {
+        hhlog_log(HHLOG_LEVEL_ERROR,
+                  "Error writing handshake. conn_ptr: %s, err: %d", conn, hr);
+        return ENDPOINT_RESULT_FAIL;
+    }
+    return ENDPOINT_RESULT_SUCCESS;
+}
+
 int endpoint_init(endpoint* conn, endpoint_type type,
                   endpoint_settings* settings,
                   endpoint_callbacks* callbacks, void* userdata)
@@ -467,12 +513,27 @@ static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg)
     }
 
     protocol_result pr;
-    if ((pr = protocol_write_server_msg(&conn->pconn, pmsg)) !=
-            PROTOCOL_RESULT_MESSAGE_FINISHED)
+
+    switch(conn->type)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "protocol_write_server_msg error: %d",
-                  pr);
-        return ENDPOINT_RESULT_FAIL;
+    case ENDPOINT_SERVER:
+        if ((pr = protocol_write_server_msg(&conn->pconn, pmsg)) !=
+                PROTOCOL_RESULT_MESSAGE_FINISHED)
+        {
+            hhlog_log(HHLOG_LEVEL_ERROR, "protocol_write_server_msg error: %d",
+                      pr);
+            return ENDPOINT_RESULT_FAIL;
+        }
+        break;
+    case ENDPOINT_CLIENT:
+        if ((pr = protocol_write_client_msg(&conn->pconn, pmsg)) !=
+                PROTOCOL_RESULT_MESSAGE_FINISHED)
+        {
+            hhlog_log(HHLOG_LEVEL_ERROR, "protocol_write_client_msg error: %d",
+                      pr);
+            return ENDPOINT_RESULT_FAIL;
+        }
+        break;
     }
 
     return ENDPOINT_RESULT_SUCCESS;
@@ -525,7 +586,6 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
     size_t data_len = 0;
     char* orig_data = NULL;
     char* data = NULL;
-    uint16_t* code_data = NULL;
     endpoint_result r = ENDPOINT_RESULT_SUCCESS;
 
     switch (conn->pconn.state)
@@ -536,19 +596,20 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
         return r;
 
     case PROTOCOL_STATE_CONNECTED:
-        data_len = sizeof(code) + reason_len;
+        hhassert(reason_len >= 0);
+        data_len = sizeof(code) + (size_t)reason_len;
         orig_data = hhmalloc(data_len);
         data = orig_data;
-        code_data = (uint16_t*)data;
-        *code_data = hh_htons(code);
+        code = hh_htons(code);
+        memcpy(data, &code, sizeof(code));
         data += sizeof(code);
 
         /* purposely leave out terminator */
-        memcpy(data, reason, reason_len);
+        memcpy(data, reason, (size_t)reason_len);
 
         msg.type = PROTOCOL_MSG_CLOSE;
         msg.data = orig_data;
-        msg.msg_len = data_len;
+        msg.msg_len = (int64_t)data_len;
         r = endpoint_send_pmsg(conn, &msg);
         conn->close_send_pending = true;
 

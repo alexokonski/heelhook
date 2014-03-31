@@ -51,15 +51,17 @@ typedef struct server_conn server_conn;
  *        length equal to server_get_num_extensions. Fill in starting from
  *        index 0. Set all to -1 or don't write to this to choose 0 extensions
  */
-typedef bool (server_on_open)(server_conn* conn, int* subprotocol_out, int*
-                                extensions_out);
-typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg);
-typedef void (server_on_ping)(server_conn* conn_info, char* payload, int
-                              payload_len);
+typedef bool (server_on_open)(server_conn* conn, int* subprotocol_out,
+                              int* extensions_out, void* userdata);
+typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg,
+                                 void* userdata);
+typedef void (server_on_ping)(server_conn* conn_info, char* payload,
+                              int payload_len, void* userdata);
 
 /* includes the close code and reason received from the client (if any) */
-typedef void (server_on_close)(server_conn* conn_info, int code, const char*
-                               reason, int reason_len);
+typedef void (server_on_close)(server_conn* conn_info, int code,
+                               const char* reason, int reason_len,
+                               void* userdata);
 
 typedef enum
 {
@@ -87,10 +89,10 @@ typedef struct
 
 /*
  * create an instance of a 'server' options and callbacks must be valid
- * pointers until server_stop is called
+ * pointers until server_stop is called and server_listen returns
  */
-server* server_create(config_server_options* options, server_callbacks*
-                      callbacks);
+server* server_create(config_server_options* options,
+                      server_callbacks* callbacks, void* userdata);
 
 /*
  * destroy an instance of a server
@@ -112,28 +114,28 @@ server_result server_conn_send_pong(server_conn* conn, char* payload, int
  * close this connection. sends a close message with the error
  * code and reason
  */
-server_result server_conn_close(server_conn* conn, uint16_t code, const char*
-                                reason, int reason_len);
+server_result server_conn_close(server_conn* conn, uint16_t code,
+                                const char* reason, int reason_len);
 
 /*
  * get number of subprotocols the client reported they support
  */
-int server_get_num_client_subprotocols(server_conn* conn);
+unsigned server_get_num_client_subprotocols(server_conn* conn);
 
 /*
  * get a subprotocol the client reported they support
  */
-const char* server_get_client_subprotocol(server_conn* conn, int index);
+const char* server_get_client_subprotocol(server_conn* conn, unsigned index);
 
 /*
  * get number of extensions the client reported they support
  */
-int server_get_num_client_extensions(server_conn* conn);
+unsigned server_get_num_client_extensions(server_conn* conn);
 
 /*
  * get an extension the client reported they support
  */
-const char* server_get_client_extension(server_conn* conn, int index);
+const char* server_get_client_extension(server_conn* conn, unsigned index);
 
 /*
  * stop the server, close all connections. will cause server_listen

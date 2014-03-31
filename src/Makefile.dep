@@ -3,6 +3,10 @@ error_code.o: error_code.c error_code.h util.h
 cencode.o: base64/cencode.c base64/cencode.h
 cdecode.o: base64/cdecode.c base64/cdecode.h
 util.o: util.c util.h
+test_client.o: test/test_client.c test/../client.h test/../config.h \
+ test/../endpoint.h test/../protocol.h test/../darray.h test/../util.h \
+ test/../event.h test/../error_code.h test/../util.h test/../hhassert.h \
+ test/../hhlog.h
 test_event.o: test/test_event.c test/../event.h test/../util.h \
  test/../util.h
 test_util.o: test/test_util.c test/../util.h
@@ -21,10 +25,12 @@ protocol.o: protocol.c base64/cencode.h error_code.h util.h hhassert.h \
  hhmemory.h protocol.h darray.h sha1/sha1.h
 pqueue.o: pqueue.c darray.h hhassert.h hhmemory.h inlist.h pqueue.h \
  util.h
+client.o: client.c client.h config.h endpoint.h protocol.h darray.h \
+ util.h hhassert.h hhlog.h
 darray.o: darray.c darray.h hhassert.h hhmemory.h util.h
 endpoint.o: endpoint.c error_code.h util.h hhassert.h hhlog.h hhmemory.h \
  protocol.h darray.h endpoint.h
-hhmemory.o: hhmemory.c
+hhmemory.o: hhmemory.c hhmemory.h
 sha1.o: sha1/sha1.c sha1/sha1.h
 server.o: server.c error_code.h util.h endpoint.h protocol.h darray.h \
  event.h inlist.h hhassert.h hhlog.h hhmemory.h server.h config.h

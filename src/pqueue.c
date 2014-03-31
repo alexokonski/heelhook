@@ -36,6 +36,8 @@
 #include "pqueue.h"
 
 #include <stdio.h>
+#include <limits.h>
+#include <stdint.h>
 
 struct pqueue_elem
 {
@@ -159,19 +161,20 @@ static void pqueue_remove_element(pqueue* q, pqueue_elem_ref ref)
 
     /* fixup heap */
     pqueue_elem** heap = darray_get_data(q->heap);
-    pqueue_elem** last = darray_get_last(q->heap);
+    pqueue_elem** last = darray_get_last_addr(q->heap);
 
     heap[heap_index] = (*last);
     heap[heap_index]->heap_index = heap_index;
 
-    darray_add_len(q->heap, -1);
+    darray_sub_len(q->heap, 1);
 
     heapify(q, heap_index);
 }
 
 static void heap_insert(pqueue* q, pqueue_elem* elem)
 {
-    elem->heap_index = darray_get_len(q->heap);
+    hhassert(darray_get_len(q->heap) < INT_MAX);
+    elem->heap_index = (int)darray_get_len(q->heap);
     darray_append(&q->heap, &elem, 1);
     pqueue_resort_element(q, elem);
 }
@@ -247,7 +250,7 @@ void pqueue_destroy(pqueue* q)
 {
     for (size_t i = 0; i < darray_get_len(q->heap); i++)
     {
-        pqueue_elem** elem = darray_get_elem(q->heap, i);
+        pqueue_elem** elem = darray_get_elem_addr(q->heap, i);
         hhfree(*elem);
     }
 
@@ -312,7 +315,8 @@ void pqueue_update_element(pqueue* q, pqueue_elem_ref ref)
  */
 int pqueue_get_size(pqueue* q)
 {
-    return darray_get_len(q->heap);
+    hhassert(darray_get_len(q->heap) < INT_MAX);
+    return (int)darray_get_len(q->heap);
 }
 
 /*
@@ -321,7 +325,7 @@ int pqueue_get_size(pqueue* q)
 pqueue_value pqueue_peek(pqueue* q)
 {
     hhassert(pqueue_get_size(q) > 0);
-    pqueue_elem** elem = darray_get_elem(q->heap, 0);
+    pqueue_elem** elem = darray_get_elem_addr(q->heap, 0);
     return (*elem)->data;
 }
 
@@ -332,7 +336,7 @@ pqueue_value pqueue_pop(pqueue* q)
 {
     hhassert(pqueue_get_size(q) > 0);
     pqueue_value top = pqueue_peek(q);
-    pqueue_elem** elem = darray_get_elem(q->heap, 0);
+    pqueue_elem** elem = darray_get_elem_addr(q->heap, 0);
     pqueue_delete(q, (*elem));
 
     heap_validate(q);
@@ -359,7 +363,7 @@ void pqueue_delete(pqueue* q, pqueue_elem_ref ref)
 
 /*
  * Iterator interface - get first id.  Will be in order inserted from
- * first to last.  Returns -1 if queue is empty
+ * first to last.
  */
 void pqueue_iter_begin(pqueue* q, pqueue_iterator* it)
 {

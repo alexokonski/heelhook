@@ -39,8 +39,8 @@
 
 struct darray
 {
-    int len;
-    int size_reserved;
+    size_t len;
+    size_t size_reserved;
     size_t elem_size;
     char data[];
 };
@@ -52,7 +52,7 @@ struct darray
  * make a darray.  init_size_reserved is the number of elements you want
  * space for right now.
  */
-darray* darray_create(size_t elem_size, int init_size_reserved)
+darray* darray_create(size_t elem_size, size_t init_size_reserved)
 {
     size_t size = sizeof(darray) + (elem_size * init_size_reserved);
     darray* array = hhmalloc(size);
@@ -68,8 +68,8 @@ darray* darray_create(size_t elem_size, int init_size_reserved)
  * make a darray and initialize it with data.
  * init_size_reserved must be >= num_elemnts
  */
-darray* darray_create_data(void* data, size_t elem_size, int num_elements,
-                           int init_size_reserved)
+darray* darray_create_data(void* data, size_t elem_size, size_t num_elements,
+                           size_t init_size_reserved)
 {
     int valid_size = init_size_reserved >= num_elements;
     hhassert(valid_size);
@@ -133,7 +133,7 @@ size_t darray_get_len(darray* array)
 }
 
 /* get the number of additional elements available*/
-int darray_get_size_reserved(darray* array)
+size_t darray_get_size_reserved(darray* array)
 {
     return array->size_reserved;
 }
@@ -148,15 +148,14 @@ void darray_clear(darray* array)
  * make the darray equal to the range [start, end).  if end is -1,
  * slice to the end of the darrray
  */
-void darray_slice(darray* array, int start, int end)
+void darray_slice(darray* array, size_t start, ssize_t end)
 {
-    hhassert(start >= 0);
-    hhassert(end <= array->len);
-    hhassert(end >= start || end < 0);
+    hhassert(end < 0 || (size_t)end <= array->len);
+    hhassert(end < 0 || (size_t)end >= start);
 
-    if (end < 0) end = array->len;
-    memmove(array->data, array->data + start, end - start);
-    array->len = end - start;
+    size_t uend = (end < 0) ? array->len : (size_t)end;
+    memmove(array->data, array->data + start, uend - start);
+    array->len = uend - start;
 }
 
 /*
@@ -166,16 +165,16 @@ void darray_slice(darray* array, int start, int end)
  *
  * returns the new data pointer for array (darray_get_data)
  */
-void* darray_ensure(darray** array, int num_elems)
+void* darray_ensure(darray** array, size_t num_elems)
 {
     darray* arr = *array;
-    int reserved = arr->size_reserved;
-    int len = arr->len;
+    size_t reserved = arr->size_reserved;
+    size_t len = arr->len;
 
     if ((reserved - len) < num_elems)
     {
-        int num_extra = (len + num_elems) - reserved;
-        int max_reserved_elems = reserved * 2;
+        size_t num_extra = (len + num_elems) - reserved;
+        size_t max_reserved_elems = reserved * 2;
 
         /* cap the amount of memory we'll use */
         if (MAX_ENSURE_SIZE < (max_reserved_elems * arr->elem_size))
@@ -183,8 +182,8 @@ void* darray_ensure(darray** array, int num_elems)
             max_reserved_elems = MAX_ENSURE_SIZE / arr->elem_size;
         }
 
-        int num_new_elems = hhmax(num_extra, max_reserved_elems);
-        int new_size =
+        size_t num_new_elems = hhmax(num_extra, max_reserved_elems);
+        size_t new_size =
             (arr->elem_size * (reserved + num_new_elems)) + sizeof(darray);
 
         arr = hhrealloc(arr, new_size);
@@ -198,43 +197,55 @@ void* darray_ensure(darray** array, int num_elems)
 }
 
 /* add to the length of the darray - just arithmetic, doesn't move memory */
-void darray_add_len(darray* array, int num_elems)
+void darray_add_len(darray* array, size_t num_elems)
 {
     hhassert((array->len + num_elems) <= array->size_reserved);
     array->len += num_elems;
 }
 
 /*
+ * subtract from the length of the darray - just arithmetic, doesn't move
+ * memory
+ */
+void darray_sub_len(darray* array, size_t num_elems)
+{
+    hhassert(array->len >= num_elems);
+    array->len -= num_elems;
+}
+
+/*
  * append some elements to the array, expanding if needed. usage:
  *
  * darray_append(&my_array, my_data, 10);
+ *
+ * returns the new data pointer for array (darray_get_data)
  */
-void darray_append(darray** array, const void* data, int num_elems)
+void* darray_append(darray** array, const void* data, size_t num_elems)
 {
-    darray_ensure(array, num_elems);
+    void* new_data = darray_ensure(array, num_elems);
     darray* arr = *array;
     if(arr == NULL)
     {
-        return;
+        return NULL;
     }
 
     void* dest = arr->data + (arr->len * arr->elem_size);
     size_t data_size = num_elems * arr->elem_size;
     memmove(dest, data, data_size);
     arr->len += num_elems;
+    return new_data;
 }
 
 /* get element by index */
-void* darray_get_elem(darray* array, int index)
+void* darray_get_elem_addr(darray* array, size_t index)
 {
-    hhassert(index >= 0);
     hhassert(array->len > 0);
     return (array->data + (array->elem_size * index));
 }
 
 /* return the last element of the darray */
-void* darray_get_last(darray* array)
+void* darray_get_last_addr(darray* array)
 {
-    return darray_get_elem(array, array->len - 1);
+    return darray_get_elem_addr(array, array->len - 1);
 }
 

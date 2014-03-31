@@ -120,9 +120,10 @@ event_loop* event_create_loop(int max_io_events)
     event_loop* loop = hhmalloc(sizeof(*loop));
     if (loop == NULL) goto create_error;
 
-    loop->io_events = hhmalloc(sizeof(*(loop->io_events)) * max_io_events);
+    loop->io_events =
+        hhmalloc(sizeof(*(loop->io_events)) * (size_t)max_io_events);
     loop->fired_events =
-        hhmalloc(sizeof(*(loop->fired_events)) * max_io_events);
+        hhmalloc(sizeof(*(loop->fired_events)) * (size_t)max_io_events);
 
     if (loop->io_events == NULL || loop->fired_events == NULL)
     {
@@ -219,7 +220,7 @@ static uint64_t event_get_now_ms(void)
 {
     struct timeval now;
     gettimeofday(&now, NULL);
-    return now.tv_sec * 1000 + now.tv_usec / 1000;
+    return (uint64_t)(now.tv_sec * 1000 + now.tv_usec / 1000);
 }
 
 event_time_id event_add_time_event(event_loop* loop,
@@ -295,7 +296,7 @@ static void event_process_all_events(event_loop* loop, int flags)
     {
         et = pqueue_peek(loop->time_events).p_val;
         now = event_get_now_ms();
-        time_ms = et->next_fire_time_ms - now;
+        time_ms = (int)(et->next_fire_time_ms - now);
 
         /* don't block if somehow we went back to the future */
         if (time_ms < 0) time_ms = 0;
@@ -394,6 +395,7 @@ static void event_process_all_events(event_loop* loop, int flags)
 /* This function blocks until an event calls event_stop_loop */
 void event_pump_events(event_loop* loop, int flags)
 {
+    loop->stop = 0;
     while (!loop->stop)
     {
         event_process_all_events(loop, flags);

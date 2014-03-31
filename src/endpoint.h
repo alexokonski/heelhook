@@ -73,9 +73,16 @@ typedef enum
 
 typedef enum
 {
+    /* read succeeded */
     ENDPOINT_READ_SUCCESS,
+
+    /* this read caused data to be written to the write buffer */
     ENDPOINT_READ_SUCCESS_WROTE_DATA,
+
+    /* error occured during read */
     ENDPOINT_READ_ERROR,
+
+    /* the connect was closed during this read or a previous read*/
     ENDPOINT_READ_CLOSED
 } endpoint_read_result;
 
@@ -145,11 +152,22 @@ void endpoint_reset(endpoint* conn);
 
 /* send a handshake reponse (only applies to server endpoints) */
 endpoint_result
-endpoint_send_handshake_response(endpoint* conn,
-                     const char* protocol, /* (optional) */
-                     const char** extensions /* NULL terminated (optional) */
+endpoint_send_handshake_response(
+    endpoint* conn,
+    const char* protocol, /* (optional) */
+    const char** extensions /* NULL terminated (optional) */
 );
 
+/* send a handshake request (only applies to client endpoints) */
+endpoint_result
+endpoint_send_handshake_request(
+    endpoint* conn,
+    const char* resource,
+    const char* host,
+    const char** protocols, /* NULL terminated (optional) */
+    const char** extensions, /* NULL terminated (optional) */
+    const char** extra_headers /* NULL terminated, (optional) */
+);
 
 /* queue up a message to send on this connection */
 endpoint_result endpoint_send_msg(endpoint* conn, endpoint_msg* msg);
@@ -173,12 +191,12 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
 /*
  * write data from endpoint to a ready socket
  */
-endpoint_write_result write_to_endpoint(endpoint* conn, int fd);
+endpoint_write_result endpoint_write(endpoint* conn, int fd);
 
 /*
  * read data from a ready socket into the endpoint
  */
-endpoint_read_result read_from_endpoint(endpoint* conn, int fd);
+endpoint_read_result endpoint_read(endpoint* conn, int fd);
 
 #endif /* __ENDPOINT_H_ */
 
