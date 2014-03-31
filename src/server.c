@@ -305,7 +305,7 @@ server_on_open_callback(endpoint* conn_info,
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "write_handshake event loop error: %d",
+        hhlog(HHLOG_LEVEL_ERROR, "write_handshake event loop error: %d",
                   er);
         goto reject_client;
     }
@@ -348,7 +348,7 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
         er = queue_write(conn);
         if (er != EVENT_RESULT_SUCCESS)
         {
-            hhlog_log(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
+            hhlog(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
         }
         return;
     case ENDPOINT_READ_ERROR:
@@ -373,7 +373,7 @@ static void accept_callback(event_loop* loop, int fd, void* data)
 
     if (client_fd == -1)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "-1 fd when accepting socket, fd: %d",
+        hhlog(HHLOG_LEVEL_ERROR, "-1 fd when accepting socket, fd: %d",
                   fd);
         return;
     }
@@ -381,7 +381,7 @@ static void accept_callback(event_loop* loop, int fd, void* data)
     server_conn* conn = activate_conn(serv, client_fd);
     if (conn == NULL)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "Server at max client capacity: %d",
+        hhlog(HHLOG_LEVEL_ERROR, "Server at max client capacity: %d",
                   serv->options.max_clients);
         close(client_fd);
         return;
@@ -393,7 +393,7 @@ static void accept_callback(event_loop* loop, int fd, void* data)
 
     if (r != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "add client to event loop error: %d", r);
+        hhlog(HHLOG_LEVEL_ERROR, "add client to event loop error: %d", r);
         event_delete_io_event(loop, client_fd, EVENT_READABLE);
     }
 }
@@ -529,7 +529,7 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -545,7 +545,7 @@ server_result server_conn_send_ping(server_conn* conn, char* payload, int
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "send_ping event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "send_ping event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -561,7 +561,7 @@ server_result server_conn_send_pong(server_conn* conn, char* payload, int
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "send_pong event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "send_pong event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -580,7 +580,7 @@ server_result server_conn_close(server_conn* conn, uint16_t code,
     event_result er = queue_write(conn);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "close event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "close event loop error: %d", er);
         return SERVER_RESULT_FAIL;
     }
 
@@ -638,7 +638,7 @@ server_result server_listen(server* serv)
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "failed to create socket: %s",
+        hhlog(HHLOG_LEVEL_ERROR, "failed to create socket: %s",
                   strerror(errno));
         return SERVER_RESULT_FAIL;
     }
@@ -652,21 +652,21 @@ server_result server_listen(server* serv)
     if (opt->bindaddr != NULL &&
         inet_aton(opt->bindaddr, &addr.sin_addr) == 0)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
+        hhlog(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
                   opt->bindaddr);
         return SERVER_RESULT_FAIL;
     }
 
     if (bind(s, (struct sockaddr*)(&addr), sizeof(addr)) == -1)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "failed to bind socket: %s",
+        hhlog(HHLOG_LEVEL_ERROR, "failed to bind socket: %s",
                   strerror(errno));
         return SERVER_RESULT_FAIL;
     }
 
     if (listen(s, SERVER_LISTEN_BACKLOG) == -1)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "failed to listen on socket: %s",
+        hhlog(HHLOG_LEVEL_ERROR, "failed to listen on socket: %s",
                   strerror(errno));
         return SERVER_RESULT_FAIL;
     }
@@ -676,7 +676,7 @@ server_result server_listen(server* serv)
 
     if (r != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "error adding accept callback to event"
+        hhlog(HHLOG_LEVEL_ERROR, "error adding accept callback to event"
                   "loop: %d", r);
         return SERVER_RESULT_FAIL;
     }

@@ -48,16 +48,26 @@ typedef struct
     char* syslogident; /* syslog ident to log to... don't use syslog if NULL */
     char* logfilepath; /* file path to log to... don't use a file if NULL */
     bool log_to_stdout; /* log to stdout if true */
+    bool log_location; /* log filename/line no. if true */
 } hhlog_options;
 
 /* stores a pointer to options */
 void hhlog_set_options(hhlog_options* options);
 
 /* 
+ * DO NOT CALL THIS DIRECTLY, USE hhlog MACRO
+ *
  * logs the message format with options used with hhlog_set_options 
  * will default to INFO, no syslog, stdout if you never call hhlog_set_options
  */
-void hhlog_log(hhlog_level level, const char* format, ...);
+void hhlog_log__(hhlog_level level, const char* filename, int line, ...);
+
+/*
+ * This is a macro so filename and line number can work, first vararg is a
+ * format string.
+ */
+#define hhlog(level, ...)\
+    hhlog_log__(level, __FILE__, __LINE__, __VA_ARGS__);
 
 #endif /* __HHLOG_H_ */
 

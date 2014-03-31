@@ -82,7 +82,7 @@ endpoint_write_result endpoint_write(endpoint* conn, int fd)
         if (num_written > 0)
         {
             /*printf("WRITTEN: %.*s\n", (int)len, &out_buf[conn->write_pos]);
-            hhlog_log(HHLOG_LEVEL_DEBUG, "WROTE %lu bytes", buf_len -
+            hhlog(HHLOG_LEVEL_DEBUG, "WROTE %lu bytes", buf_len -
                         conn->write_pos);*/
         }
         conn->write_pos += (size_t)num_written;
@@ -94,9 +94,9 @@ endpoint_write_result endpoint_write(endpoint* conn, int fd)
 
     if (num_written == -1)
     {
-        hhlog_log(HHLOG_LEVEL_WARNING, "Error writing to endpoint. fd: %d,"
-                  "error: %s", fd, strerror(errno)
-        );
+        hhlog(HHLOG_LEVEL_WARNING,
+              "Error writing to endpoint. fd: %d, error: %s", fd,
+              strerror(errno));
         deactivate_conn(conn);
         return ENDPOINT_WRITE_ERROR;
     }
@@ -300,7 +300,7 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
          */
         return ENDPOINT_READ_SUCCESS;
     case PROTOCOL_HANDSHAKE_FAIL:
-        hhlog_log(HHLOG_LEVEL_WARNING, "Read invalid handshake. fd: %d", fd);
+        hhlog(HHLOG_LEVEL_WARNING, "Read invalid handshake. fd: %d", fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     default:
@@ -365,7 +365,7 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
 
     if (num_read == -1)
     {
-        hhlog_log(HHLOG_LEVEL_WARNING,
+        hhlog(HHLOG_LEVEL_WARNING,
                   "Error reading from endpoint. fd: %d, error: %s",
                   fd, strerror(errno));
         deactivate_conn(conn);
@@ -373,13 +373,13 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
     }
     else if (num_read == 0)
     {
-        hhlog_log(HHLOG_LEVEL_INFO, "Endpoint closed connection. fd: %d", fd);
+        hhlog(HHLOG_LEVEL_INFO, "Endpoint closed connection. fd: %d", fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     }
     /* else ... */
 
-    /*hhlog_log(HHLOG_LEVEL_DEBUG, "READ %lu bytes: %.*s", num_read,
+    /*hhlog(HHLOG_LEVEL_DEBUG, "READ %lu bytes: %.*s", num_read,
               (int)num_read, buf);*/
 
     hhassert(num_read > 0);
@@ -404,13 +404,13 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
         }
         break;
     case PROTOCOL_STATE_WRITE_HANDSHAKE:
-        hhlog_log(HHLOG_LEVEL_WARNING,
+        hhlog(HHLOG_LEVEL_WARNING,
                   "tried to read when we were writing handshake: %d", fd);
         deactivate_conn(conn);
         r = ENDPOINT_READ_ERROR;
         break;
     case PROTOCOL_STATE_CONNECTED:
-        /*hhlog_log(HHLOG_LEVEL_DEBUG, "read %lu msg bytes", num_read);*/
+        /*hhlog(HHLOG_LEVEL_DEBUG, "read %lu msg bytes", num_read);*/
         pr = parse_endpoint_messages(conn);
         r = parse_result_to_endpoint_read_result(pr);
         break;
@@ -451,7 +451,7 @@ endpoint_send_handshake_response(
                                               extensions)) !=
             PROTOCOL_HANDSHAKE_SUCCESS)
     {
-       hhlog_log(HHLOG_LEVEL_ERROR,
+       hhlog(HHLOG_LEVEL_ERROR,
                  "Error writing handshake. conn_ptr: %p, err: %d", conn, hr);
         return ENDPOINT_RESULT_FAIL;
     }
@@ -478,7 +478,7 @@ endpoint_send_handshake_request(
 
     if (hr != PROTOCOL_HANDSHAKE_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR,
+        hhlog(HHLOG_LEVEL_ERROR,
                   "Error writing handshake. conn_ptr: %s, err: %d", conn, hr);
         return ENDPOINT_RESULT_FAIL;
     }
@@ -520,7 +520,7 @@ static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg)
         if ((pr = protocol_write_server_msg(&conn->pconn, pmsg)) !=
                 PROTOCOL_RESULT_MESSAGE_FINISHED)
         {
-            hhlog_log(HHLOG_LEVEL_ERROR, "protocol_write_server_msg error: %d",
+            hhlog(HHLOG_LEVEL_ERROR, "protocol_write_server_msg error: %d",
                       pr);
             return ENDPOINT_RESULT_FAIL;
         }
@@ -529,7 +529,7 @@ static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg)
         if ((pr = protocol_write_client_msg(&conn->pconn, pmsg)) !=
                 PROTOCOL_RESULT_MESSAGE_FINISHED)
         {
-            hhlog_log(HHLOG_LEVEL_ERROR, "protocol_write_client_msg error: %d",
+            hhlog(HHLOG_LEVEL_ERROR, "protocol_write_client_msg error: %d",
                       pr);
             return ENDPOINT_RESULT_FAIL;
         }

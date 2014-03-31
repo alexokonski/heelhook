@@ -25,12 +25,13 @@ on_open(server_conn* conn, int* subprotocol_out, int* extensions_out,
     hhunused(conn);
     hhunused(userdata);
     unsigned num_protocols = server_get_num_client_subprotocols(conn);
-    printf("Got subprotocols [\n");
+    hhlog(HHLOG_LEVEL_DEBUG, "Got subprotocols [\n");
     for (unsigned i = 0; i < num_protocols; i++)
     {
-        printf("    %s\n", server_get_client_subprotocol(conn, i));
+        hhlog(HHLOG_LEVEL_DEBUG, "    %s\n",
+              server_get_client_subprotocol(conn, i));
     }
-    printf("]\n\n");
+    hhlog(HHLOG_LEVEL_DEBUG, "]\n\n");
 
     return true;
 }
@@ -44,7 +45,8 @@ on_close(server_conn* conn, int code, const char* reason, int reason_len,
     hhunused(reason);
     hhunused(reason_len);
     hhunused(userdata);
-    printf("Got close: (%d, %.*s)\n", code, (int)reason_len, reason);
+    hhlog(HHLOG_LEVEL_DEBUG, "Got close: (%d, %.*s)\n", code,
+          (int)reason_len, reason);
 }
 
 static void signal_handler(int sig)
@@ -62,7 +64,8 @@ static hhlog_options g_log_options =
     .loglevel = HHLOG_LEVEL_DEBUG,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = true
+    .log_to_stdout = true,
+    .log_location = true
 };
 
 int main(int argc, char** argv)

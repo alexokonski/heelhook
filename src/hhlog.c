@@ -44,7 +44,8 @@ static hhlog_options g_default_options =
     .loglevel = HHLOG_LEVEL_INFO,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = true
+    .log_to_stdout = true,
+    .log_location = false
 };
 
 static hhlog_options* g_current_options = &g_default_options;
@@ -63,7 +64,7 @@ void hhlog_set_options(hhlog_options* options)
  * logs the message format with options used with hhlog_set_options 
  * will default to INFO, no syslog, stdout if you never call hhlog_set_options
  */
-void hhlog_log(hhlog_level level, const char* format, ...)
+void hhlog_log__(hhlog_level level, const char* filename, int line, ...)
 {
     if (level < g_current_options->loglevel)
     {
@@ -114,18 +115,23 @@ void hhlog_log(hhlog_level level, const char* format, ...)
         syslog_level = LOG_ERR;
         break;
     }
-    num_written = snprintf(buffer, sizeof(buffer),
-        "%s %s ",
-        time_buffer,
-        level_str
-    );
+    num_written = snprintf(buffer, sizeof(buffer), "%s %s ", time_buffer,
+                           level_str);
 
     va_list list;
-    va_start(list, format);
+    va_start(list, line);
+    char* format = va_arg(list, char*);
     num_written += vsnprintf(&buffer[num_written],
                              sizeof(buffer) - (size_t)num_written, format,
                              list);
     va_end(list);
+
+    if(g_current_options->log_location)
+    {
+        num_written += snprintf(&buffer[num_written],
+                                sizeof(buffer) - (size_t)num_written,
+                                " (%s:%d)", filename, line);
+    }
 
     if (fp != NULL)
     {

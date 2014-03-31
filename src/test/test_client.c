@@ -44,14 +44,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-static bool g_debug = false;
-
 static hhlog_options g_log_options =
 {
-    .loglevel = HHLOG_LEVEL_DEBUG,
+    .loglevel = HHLOG_LEVEL_INFO,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = true
+    .log_to_stdout = true,
+    .log_location = true
 };
 
 static void usage(char* exec_name)
@@ -99,7 +98,7 @@ static event_result queue_write(client* c, event_loop* loop)
                             test_client_write, c);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "add io event failed: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "add io event failed: %d", er);
         exit(1);
     }
 
@@ -165,7 +164,7 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
     int r = getsockopt(fd, SOL_SOCKET, SO_ERROR, &result, &sizeval);
     if (r < 0)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "getsockopt failed: %d %s", r,
+        hhlog(HHLOG_LEVEL_ERROR, "getsockopt failed: %d %s", r,
                   strerror(errno));
         teardown_client(c, loop);
         return;
@@ -173,7 +172,7 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
 
     if (result != 0)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "non-blocking connect() failed: %d %s",
+        hhlog(HHLOG_LEVEL_ERROR, "non-blocking connect() failed: %d %s",
                   result, strerror(result));
         teardown_client(c, loop);
         return;
@@ -184,7 +183,7 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
                             test_client_read, c);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
         exit(1);
     }
     queue_write(c, loop);
@@ -194,7 +193,7 @@ static bool on_open(client* c, void* userdata)
 {
     hhunused(userdata);
     /*event_loop* loop = userdata;*/
-    hhlog_log(HHLOG_LEVEL_INFO, "connection opened: %d", client_fd(c));
+    hhlog(HHLOG_LEVEL_DEBUG, "connection opened: %d", client_fd(c));
 
     /*endpoint_msg msg;
     msg.is_text = true;
@@ -212,7 +211,7 @@ static bool on_open(client* c, void* userdata)
 static void on_message(client* c, endpoint_msg* msg, void* userdata)
 {
     event_loop* loop = userdata;
-    /*hhlog_log(HHLOG_LEVEL_INFO, "got message: \"%.*s\"", (int)msg->msg_len,
+    /*hhlog(HHLOG_LEVEL_DEBUG, "got message: \"%.*s\"", (int)msg->msg_len,
               msg->data);
 
     char data[64];
@@ -230,12 +229,12 @@ static void on_close(client* c, int code, const char* reason,
     event_loop* loop = userdata;
     if (reason_len > 0)
     {
-        hhlog_log(HHLOG_LEVEL_INFO, "client %d got close: %d %.*s\n",
+        hhlog(HHLOG_LEVEL_DEBUG, "client %d got close: %d %.*s",
                   client_fd(c), code, reason_len, reason);
     }
     else
     {
-        hhlog_log(HHLOG_LEVEL_INFO, "client %d got reason-less close: %d\n",
+        hhlog(HHLOG_LEVEL_DEBUG, "client %d got reason-less close: %d",
                   client_fd(c), code);
     }
 
@@ -299,7 +298,7 @@ static void do_autobahn_test(const char* addr, int port, int num)
 
         if (cr != CLIENT_RESULT_SUCCESS)
         {
-            hhlog_log(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
+            hhlog(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
             exit(1);
         }
 
@@ -308,13 +307,15 @@ static void do_autobahn_test(const char* addr, int port, int num)
                                 test_client_connect, &c);
         if (er != EVENT_RESULT_SUCCESS)
         {
-            hhlog_log(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+            hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
             exit(1);
         }
 
         /* block and process all connections */
         event_pump_events(loop, 0);
     }
+
+    event_destroy_loop(loop);
 }
 
 int main(int argc, char** argv)
@@ -323,6 +324,7 @@ int main(int argc, char** argv)
     const char* port_str = "8080";
     const char* num_str = "1";
     bool autobahn_mode = false;
+    bool debug = false;
 
     static struct option long_options[] =
     {
@@ -348,7 +350,7 @@ int main(int argc, char** argv)
         switch (c)
         {
         case 'd':
-            g_debug = true;
+            debug = true;
             break;
 
         case 'a':
@@ -388,6 +390,11 @@ int main(int argc, char** argv)
     /* convert cmd line args to int */
     int port = convert_to_int(port_str, argv[0]);
     int num = convert_to_int(num_str, argv[0]);
+
+    if (debug)
+    {
+        g_log_options.loglevel = HHLOG_LEVEL_DEBUG;
+    }
 
     /* initialize needed state */
     srand(time(NULL));

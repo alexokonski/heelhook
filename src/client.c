@@ -141,15 +141,15 @@ client_connect_raw(client* c, config_client_options* opt,
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s < 0)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "failed to create socket: %s",
-                  strerror(errno));
+        hhlog(HHLOG_LEVEL_ERROR, "failed to create socket: %s",
+              strerror(errno));
         return CLIENT_RESULT_FAIL;
     }
 
     if (fcntl(s, F_SETFL, O_NONBLOCK) == -1)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "fcntl failed on socket: %s",
-                  strerror(errno));
+        hhlog(HHLOG_LEVEL_ERROR, "fcntl failed on socket: %s",
+              strerror(errno));
         return CLIENT_RESULT_FAIL;
     }
 
@@ -160,16 +160,16 @@ client_connect_raw(client* c, config_client_options* opt,
     addr.sin_addr.s_addr = hh_htonl(INADDR_ANY);
     if (inet_aton(ip_addr, &addr.sin_addr) == 0)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
-                  strerror(errno));
+        hhlog(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
+              strerror(errno));
         return CLIENT_RESULT_FAIL;
     }
 
     if (connect(s, (struct sockaddr*)(&addr), sizeof(addr)) == -1 &&
         errno != EINPROGRESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "connect failed on socket: %s",
-                  strerror(errno));
+        hhlog(HHLOG_LEVEL_ERROR, "connect failed on socket: %s",
+              strerror(errno));
         return CLIENT_RESULT_FAIL;
     }
 
@@ -181,8 +181,8 @@ client_connect_raw(client* c, config_client_options* opt,
                           &g_client_cbs, c);
     if (r < 0)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR, "endpoint_init failed: %s",
-                  strerror(errno));
+        hhlog(HHLOG_LEVEL_ERROR, "endpoint_init failed: %s",
+              strerror(errno));
         return CLIENT_RESULT_FAIL;
     }
 
@@ -192,9 +192,9 @@ client_connect_raw(client* c, config_client_options* opt,
                                          extra_headers);
     if (er != ENDPOINT_RESULT_SUCCESS)
     {
-        hhlog_log(HHLOG_LEVEL_ERROR,
-                  "endpoint failed to write handshake result: %d, socket: %d",
-                  er, s);
+        hhlog(HHLOG_LEVEL_ERROR,
+              "endpoint failed to write handshake result: %d, socket: %d",
+              er, s);
         return CLIENT_RESULT_FAIL;
     }
 
