@@ -120,19 +120,19 @@ struct endpoint_callbacks
      *
      * for clients, called when the server has sent the handshake response 
      */
-    endpoint_on_open* on_open_callback;
+    endpoint_on_open* on_open;
 
     /* called when a full message is received from a client */
-    endpoint_on_message* on_message_callback;
+    endpoint_on_message* on_message;
 
     /*
      * called when a ping was received.  a pong is always sent for you
      * automatically to conform to the RFC
      */
-    endpoint_on_ping* on_ping_callback;
+    endpoint_on_ping* on_ping;
 
     /* called when connection is about to terminate */
-    endpoint_on_close* on_close_callback;
+    endpoint_on_close* on_close;
 };
 
 /*
@@ -153,9 +153,9 @@ void endpoint_reset(endpoint* conn);
 /* send a handshake reponse (only applies to server endpoints) */
 endpoint_result
 endpoint_send_handshake_response(
-    endpoint* conn,
-    const char* protocol, /* (optional) */
-    const char** extensions /* NULL terminated (optional) */
+        endpoint* conn,
+        const char* protocol, /* (optional) */
+        const char** extensions /* NULL terminated (optional) */
 );
 
 /* send a handshake request (only applies to client endpoints) */

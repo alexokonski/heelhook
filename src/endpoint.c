@@ -54,12 +54,12 @@ static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg);
 
 static void deactivate_conn(endpoint* conn)
 {
-    if (conn->callbacks->on_close_callback != NULL)
+    if (conn->callbacks->on_close != NULL)
     {
-        conn->callbacks->on_close_callback(conn, conn->pconn.error_code,
-                                           conn->pconn.error_msg,
-                                           conn->pconn.error_len,
-                                           conn->userdata);
+        conn->callbacks->on_close(conn, conn->pconn.error_code,
+                                  conn->pconn.error_msg,
+                                  conn->pconn.error_len,
+                                  conn->userdata);
     }
 }
 
@@ -197,10 +197,10 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 smsg.data = msg.data;
                 smsg.msg_len = msg.msg_len;
                 smsg.is_text = is_text;
-                if (conn->callbacks->on_message_callback != NULL)
+                if (conn->callbacks->on_message != NULL)
                 {
-                    conn->callbacks->on_message_callback(conn, &smsg,
-                                                         conn->userdata);
+                    conn->callbacks->on_message(conn, &smsg,
+                                                conn->userdata);
                 }
                 break;
             case PROTOCOL_MSG_CLOSE:
@@ -232,11 +232,11 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 }
                 break;
             case PROTOCOL_MSG_PING:
-                if (conn->callbacks->on_ping_callback != NULL)
+                if (conn->callbacks->on_ping != NULL)
                 {
-                    conn->callbacks->on_ping_callback(conn, msg.data,
-                                                      (int)msg.msg_len,
-                                                      conn->userdata);
+                    conn->callbacks->on_ping(conn, msg.data,
+                                             (int)msg.msg_len,
+                                             conn->userdata);
                 }
                 msg.type = PROTOCOL_MSG_PONG;
                 endpoint_send_pmsg(conn, &msg);
@@ -313,8 +313,8 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
      * allow users of this interface to reject or pick
      * subprotocols/extensions
      */
-    if (conn->callbacks->on_open_callback != NULL &&
-        !conn->callbacks->on_open_callback(conn, &conn->pconn, conn->userdata)
+    if (conn->callbacks->on_open != NULL &&
+        !conn->callbacks->on_open(conn, &conn->pconn, conn->userdata)
     )
     {
         deactivate_conn(conn);

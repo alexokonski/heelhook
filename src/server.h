@@ -39,7 +39,9 @@
 typedef struct server server;
 typedef struct server_conn server_conn;
 
-/*
+/* on_open is called when a client has sent their side of the handshake, but
+ * the server has not yet responded
+ *
  * return false if you want to reject this client
  * 
  * output params:
@@ -53,12 +55,27 @@ typedef struct server_conn server_conn;
  */
 typedef bool (server_on_open)(server_conn* conn, int* subprotocol_out,
                               int* extensions_out, void* userdata);
+/*
+ * on_connect is called right after the server has sent its opening handshake
+ * and it's now okay to send and receive normal websocket messages
+ */
+typedef void (server_on_connect)(server_conn* conn, void* userdata);
+
+/* on_message is called when the client sends the server a message */
 typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg,
                                  void* userdata);
+
+/*
+ * on_ping is called when the client sends the server a ping. a ping is always
+ * sent for you automatically to conform to the RFC
+ */
 typedef void (server_on_ping)(server_conn* conn_info, char* payload,
                               int payload_len, void* userdata);
 
-/* includes the close code and reason received from the client (if any) */
+/*
+ * on_close is called whenever the server is closing the connection for any
+ * reason includes the close code and reason received from the client (if any)
+ */
 typedef void (server_on_close)(server_conn* conn_info, int code,
                                const char* reason, int reason_len,
                                void* userdata);
@@ -71,20 +88,11 @@ typedef enum
 
 typedef struct
 {
-    /* called when a handshake has just been completed */
-    server_on_open* on_open_callback;
-
-    /* called when a full message is received from a client */
-    server_on_message* on_message_callback;
-
-    /*
-     * called when a ping was received.  a pong is always sent for you
-     * automatically to conform to the RFC
-     */
-    server_on_ping* on_ping_callback;
-
-    /* called when connection is about to terminate */
-    server_on_close* on_close_callback;
+    server_on_open* on_open;
+    server_on_connect* on_connect;
+    server_on_message* on_message;
+    server_on_ping* on_ping;
+    server_on_close* on_close;
 } server_callbacks;
 
 /*
@@ -99,16 +107,22 @@ server* server_create(config_server_options* options,
  */
 void server_destroy(server* serv);
 
+/* set per-connection userdata */
+void server_conn_set_userdata(server_conn* conn, void* userdata);
+
+/* get per-connection userdata */
+void* server_conn_get_userdata(server_conn* conn);
+
 /* queue up a message to send on this connection */
 server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg);
 
 /* send a ping with payload (NULL for no payload)*/
-server_result server_conn_send_ping(server_conn* conn, char* payload, int
-                                    payload_len);
+server_result
+server_conn_send_ping(server_conn* conn, char* payload, int payload_len);
 
 /* send a pong with payload (NULL for no payload)*/
-server_result server_conn_send_pong(server_conn* conn, char* payload, int
-                                    payload_len);
+server_result
+server_conn_send_pong(server_conn* conn, char* payload, int payload_len);
 
 /*
  * close this connection. sends a close message with the error

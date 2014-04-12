@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+   <script type="text/javascript" src="http://code.jquery.com/jquery-2.1.0.min.js"></script>
+   <script type="text/javascript" src="/chat.js"></script>
+   <link rel="stylesheet" type="text/css" href="/chat.css">
+   <head>
+   </head>
+   <body>
+      <h1><a href="/chatserver_client.html">BAD CHAT</a></h1>
+      <label for="name">User name:</label><input id="name" type="text" size="20" maxlength="40"><br/>
+      <label for="room">Room name:</label><input id="room" type="text" size="20" maxlength="40">
+      <button id="create_button">Create</button>
+      <div id="tables">
+        <table id="rooms">
+        <thead>
+          <tr>
+            <th>Rooms</th>
+            <th>Join</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+        </table>
+        <table id="clients">
+        <thead>
+          <tr>
+            <th>Clients</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+        </table>
+      </div>
+      <div></div>
+      <br/>
+      <h2 id="room_name"></h2>
+      <textarea readonly id="chatbox"></textarea>
+      <br/>
+      <input id="sendbox" type="text">
+   </body>
+</html>

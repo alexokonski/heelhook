@@ -21,6 +21,11 @@ echoserver.o: servers/echoserver.c servers/../server.h \
  servers/../endpoint.h servers/../protocol.h servers/../darray.h \
  servers/../util.h servers/../config.h servers/../hhlog.h \
  servers/../util.h
+chatserver.o: servers/chatserver.c servers/../hhlog.h servers/../util.h \
+ servers/../hhmemory.h servers/../inlist.h servers/../server.h \
+ servers/../endpoint.h servers/../protocol.h servers/../darray.h \
+ servers/../config.h servers/../util.h servers/cJSON.h
+cJSON.o: servers/cJSON.c servers/cJSON.h
 protocol.o: protocol.c base64/cencode.h error_code.h util.h hhassert.h \
  hhmemory.h protocol.h darray.h sha1/sha1.h
 pqueue.o: pqueue.c darray.h hhassert.h hhmemory.h inlist.h pqueue.h \

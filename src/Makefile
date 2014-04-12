@@ -14,7 +14,7 @@ HEELHOOK_OBJECTS= $(ENDPOINT_OBJECTS) event.o server.o pqueue.o
 TEST_CC= $(CC) $(TEST_LIBS) -o $@ $^
 
 .PHONY: all
-all: heelhook echoserver test_client test
+all: heelhook echoserver chatserver test_client test
 
 .PHONY: debug
 debug: 
@@ -53,6 +53,9 @@ test_client: $(ENDPOINT_OBJECTS) client.o test_client.o event.o pqueue.o
 echoserver: echoserver.o $(HEELHOOK_OBJECTS)
 	$(TEST_CC)
 
+chatserver: chatserver.o cJSON.o $(HEELHOOK_OBJECTS)
+	$(TEST_CC) -lm
+
 include Makefile.dep
 
 %.o: %.c
@@ -65,6 +68,7 @@ dep:
 clean:
 	rm -rf *.o
 	rm -f echoserver
+	rm -f chatserver
 	rm -f test_event
 	rm -f test_darray
 	rm -f test_protocol

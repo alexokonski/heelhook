@@ -50,9 +50,9 @@ client_on_open_callback(endpoint* conn_info,
     hhunused(proto_conn);
 
     client* c = userdata;
-    if (c->cbs->on_open_callback != NULL)
+    if (c->cbs->on_connect != NULL)
     {
-        return c->cbs->on_open_callback(c, c->userdata);
+        return c->cbs->on_connect(c, c->userdata);
     }
 
     return true;
@@ -65,9 +65,9 @@ static void client_on_message_callback(endpoint* conn_info, endpoint_msg* msg,
 
     client* c = userdata;
 
-    if (c->cbs->on_message_callback != NULL)
+    if (c->cbs->on_message != NULL)
     {
-        c->cbs->on_message_callback(c, msg, c->userdata);
+        c->cbs->on_message(c, msg, c->userdata);
     }
 }
 
@@ -78,9 +78,9 @@ static void client_on_ping_callback(endpoint* conn_info, char* payload,
 
     client* c = userdata;
 
-    if (c->cbs->on_ping_callback != NULL)
+    if (c->cbs->on_ping != NULL)
     {
-        c->cbs->on_ping_callback(c, payload, payload_len, c->userdata);
+        c->cbs->on_ping(c, payload, payload_len, c->userdata);
     }
 }
 
@@ -91,9 +91,9 @@ static void client_on_close_callback(endpoint* conn_info, int code,
     hhunused(conn_info);
 
     client* c = userdata;
-    if (c->cbs->on_close_callback != NULL)
+    if (c->cbs->on_close != NULL)
     {
-        c->cbs->on_close_callback(c, code, reason, reason_len, c->userdata);
+        c->cbs->on_close(c, code, reason, reason_len, c->userdata);
     }
 
     /* close the socket */
@@ -102,10 +102,10 @@ static void client_on_close_callback(endpoint* conn_info, int code,
 
 static endpoint_callbacks g_client_cbs =
 {
-    .on_open_callback = client_on_open_callback,
-    .on_message_callback = client_on_message_callback,
-    .on_ping_callback = client_on_ping_callback,
-    .on_close_callback = client_on_close_callback
+    .on_open = client_on_open_callback,
+    .on_message = client_on_message_callback,
+    .on_ping = client_on_ping_callback,
+    .on_close = client_on_close_callback
 };
 
 static client_result endpoint_result_to_client_result(endpoint_result r)

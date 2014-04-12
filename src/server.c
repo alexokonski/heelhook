@@ -57,6 +57,7 @@ struct server_conn
     int fd;
     endpoint endp;
     server* serv;
+    void* userdata;
     server_conn* next;
     server_conn* prev;
 };
@@ -79,8 +80,8 @@ struct server
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data);
 
-static bool server_on_open_callback(endpoint* conn, protocol_conn*
-                                      proto_conn, void* userdata);
+static bool server_on_open_callback(endpoint* conn, protocol_conn* proto_conn,
+                                    void* userdata);
 
 static void server_on_message_callback(endpoint* conn, endpoint_msg* msg,
                                        void* userdata);
@@ -94,15 +95,16 @@ static void server_on_close_callback(endpoint* conn_info, int code,
 
 static endpoint_callbacks g_server_cbs =
 {
-    .on_open_callback = server_on_open_callback,
-    .on_message_callback = server_on_message_callback,
-    .on_ping_callback = server_on_ping_callback,
-    .on_close_callback = server_on_close_callback
+    .on_open = server_on_open_callback,
+    .on_message = server_on_message_callback,
+    .on_ping = server_on_ping_callback,
+    .on_close = server_on_close_callback
 };
 
 static int init_conn(server_conn* conn, server* serv)
 {
     conn->serv = serv;
+    conn->userdata = NULL;
     int r = endpoint_init(&conn->endp, ENDPOINT_SERVER,
                           &serv->options.endp_settings, &g_server_cbs, conn);
 
@@ -150,9 +152,9 @@ static void server_on_ping_callback(endpoint* conn_info, char* payload,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
-    if (serv->cbs.on_ping_callback != NULL)
+    if (serv->cbs.on_ping != NULL)
     {
-        serv->cbs.on_ping_callback(conn, payload, payload_len, serv->userdata);
+        serv->cbs.on_ping(conn, payload, payload_len, serv->userdata);
     }
 }
 
@@ -165,9 +167,9 @@ static void server_on_close_callback(endpoint* conn_info, int code,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
-    if (serv->cbs.on_close_callback != NULL)
+    if (serv->cbs.on_close != NULL)
     {
-        serv->cbs.on_close_callback(conn, code, reason, reason_len,
+        serv->cbs.on_close(conn, code, reason, reason_len,
                                     serv->userdata);
     }
 
@@ -230,7 +232,7 @@ server_on_open_callback(endpoint* conn_info,
     server* serv = conn->serv;
     int* extensions_out = NULL;
     const char** extensions = NULL;
-    char* subprotocol = NULL;
+    const char* subprotocol = NULL;
 
     /* initialize output params */
     int subprotocol_out = -1;
@@ -248,17 +250,17 @@ server_on_open_callback(endpoint* conn_info,
      * allow users of this interface to reject or pick
      * subprotocols/extensions
      */
-    if (serv->cbs.on_open_callback != NULL &&
-        !serv->cbs.on_open_callback(conn, &subprotocol_out, extensions_out,
-                                    serv->userdata)
-    )
+    if (serv->cbs.on_open != NULL &&
+        !serv->cbs.on_open(conn, &subprotocol_out, extensions_out,
+                           serv->userdata))
     {
         goto reject_client;
     }
 
     if (subprotocol_out >= 0)
     {
-        server_get_client_subprotocol(conn, (unsigned)subprotocol_out);
+        subprotocol =
+            server_get_client_subprotocol(conn, (unsigned)subprotocol_out);
     }
 
     if (extensions_out != NULL && extensions_out[0] >= 0)
@@ -290,12 +292,6 @@ server_on_open_callback(endpoint* conn_info,
         extensions_out = NULL;
     }
 
-    if (subprotocol != NULL)
-    {
-        hhfree(subprotocol);
-        subprotocol = NULL;
-    }
-
     if (extensions != NULL)
     {
         hhfree(extensions);
@@ -310,11 +306,15 @@ server_on_open_callback(endpoint* conn_info,
         goto reject_client;
     }
 
+    if (serv->cbs.on_connect != NULL)
+    {
+        serv->cbs.on_connect(conn, serv->userdata);
+    }
+
     return true;
 
 reject_client:
     if (extensions_out != NULL) hhfree(extensions_out);
-    if (subprotocol != NULL) hhfree(subprotocol);
     if (extensions != NULL) hhfree(extensions);
     return false;
 }
@@ -327,9 +327,9 @@ static void server_on_message_callback(endpoint* conn_info, endpoint_msg* msg,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
-    if (serv->cbs.on_message_callback != NULL)
+    if (serv->cbs.on_message!= NULL)
     {
-        serv->cbs.on_message_callback(conn, msg, serv->userdata);
+        serv->cbs.on_message(conn, msg, serv->userdata);
     }
 }
 
@@ -464,6 +464,18 @@ void server_destroy(server* serv)
 
     hhfree(serv->connections);
     hhfree(serv);
+}
+
+/* set per-connection userdata */
+void server_conn_set_userdata(server_conn* conn, void* userdata)
+{
+    conn->userdata = userdata;
+}
+
+/* get per-connection userdata */
+void* server_conn_get_userdata(server_conn* conn)
+{
+    return conn->userdata;
 }
 
 static void server_teardown(server* serv)

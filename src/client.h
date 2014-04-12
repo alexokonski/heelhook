@@ -73,7 +73,7 @@ typedef enum
 } client_result;
 
 typedef struct client client;
-typedef bool (client_on_open)(client* c, void* userdata);
+typedef bool (client_on_connect)(client* c, void* userdata);
 typedef void (client_on_message)(client* c, endpoint_msg* msg, void* userdata);
 typedef void (client_on_ping)(client* c, char* payload, int payload_len,
                               void* userdata);
@@ -85,19 +85,19 @@ typedef void (client_on_close)(client* c, int code, const char* reason,
 typedef struct
 {
     /* called when a handshake has just been completed */
-    client_on_open* on_open_callback;
+    client_on_connect* on_connect;
 
     /* called when a full message is received from a client */
-    client_on_message* on_message_callback;
+    client_on_message* on_message;
 
     /*
      * called when a ping was received.  a pong is always sent for you
      * automatically to conform to the RFC
      */
-    client_on_ping* on_ping_callback;
+    client_on_ping* on_ping;
 
     /* called when connection is about to terminate */
-    client_on_close* on_close_callback;
+    client_on_close* on_close;
 } client_callbacks;
 
 struct client
