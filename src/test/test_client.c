@@ -189,7 +189,7 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
     queue_write(c, loop);
 }
 
-static bool on_open(client* c, void* userdata)
+static bool on_connect(client* c, void* userdata)
 {
     hhunused(userdata);
     /*event_loop* loop = userdata;*/
@@ -273,10 +273,10 @@ static void do_autobahn_test(const char* addr, int port, int num)
     conn_settings->rand_func = random_callback;
 
     client_callbacks callbacks;
-    callbacks.on_open_callback = on_open;
-    callbacks.on_message_callback = on_message;
-    callbacks.on_ping_callback = NULL;
-    callbacks.on_close_callback = on_close;
+    callbacks.on_connect = on_connect;
+    callbacks.on_message = on_message;
+    callbacks.on_ping = NULL;
+    callbacks.on_close = on_close;
 
     static const char* extra_headers[] =
     {
