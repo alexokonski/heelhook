@@ -27,7 +27,7 @@ $(function() {
 
     function addRoomsToTable(rooms)
     {
-        var obj = $("#rooms").find("tbody").empty();
+        var obj = $("tbody");
         for (var i = 0; i < rooms.length; i++)
         {
             if (webSocket.roomName == rooms[i])
@@ -36,10 +36,25 @@ $(function() {
             }
             else
             {
-                obj = obj.append($("<tr>").append($("<td>").text(rooms[i])).append($("<td>").append($("<button>").attr("id", "join_button").html("Join"))));
+                $("<tr>")
+                  .append(
+                    $("<td>")
+                      .text(rooms[i])
+                  )
+                  .append(
+                    $("<td>")
+                      .append(
+                        $("<button>")
+                          .attr("class", "join_button")
+                          .text("Join")
+                      )
+                  )
+                  .appendTo(obj)
             }
         }
-        $("#join_button").click(joinRoom);
+
+        obj.on("click button.join_button", joinRoom);
+        $("#roomlist").replaceWith(obj);
         if (rooms.length > 0)
         {
             $("#rooms").show();
@@ -68,7 +83,11 @@ $(function() {
 
         webSocket.onopen = function(e)
         {
-            var stringified = JSON.stringify({"request":{"value":"get_rooms"}});
+            var stringified = JSON.stringify({
+                "request": {
+                    "value":"get_rooms"
+                }
+            });
             webSocket.send(stringified);
         }
 
@@ -112,30 +131,45 @@ $(function() {
     function createRoom()
     {
         var newRoom = $("#room").val();
-        var userName = $("#name").val 
+        var userName = $("#name").val();
 
         if (newRoom.length > 0 && userName.length > 0)
         {
-            var stringified = JSON.stringify({"request":{"value":"create_room","room":newRoom,"user_name":userName}});
+            var stringified = JSON.stringify({
+                "request": {
+                    "value":"create_room",
+                    "room":newRoom,
+                    "user_name":userName
+                }
+            });
             webSocket.send(stringified);
         }
     }
 
-    function joinRoom()
+    function joinRoom(e, arg1)
     {
-        var room = $(this).parent().prev().text();
+        var room = $(e.target).parent().prev().text();
+        console.log(e.target);
         var userName = $("#name").val();
 
         if (room.length > 0 && userName.length > 0)
         {
-            var stringified = JSON.stringify({"request":{"value":"join_room","room":room,"user_name":userName}});
+            var stringified = JSON.stringify({
+                "request": {
+                    "value":"join_room",
+                    "room":room,
+                    "user_name":userName
+                }
+            });
             webSocket.send(stringified);
         }
     }
 
     function sendMessage()
     {
-        webSocket.send(JSON.stringify({"message":$("#sendbox").val()}));
+        webSocket.send(JSON.stringify({
+            "message":$("#sendbox").val()
+        }));
         $("#sendbox").val("");
     }
 
