@@ -84,6 +84,7 @@ typedef enum
 {
     PROTOCOL_HANDSHAKE_SUCCESS,
     PROTOCOL_HANDSHAKE_CONTINUE,
+    PROTOCOL_HANDSHAKE_FAIL_TOO_LARGE,
     PROTOCOL_HANDSHAKE_FAIL
 } protocol_handshake_result;
 
@@ -150,11 +151,14 @@ typedef struct
      */
     int64_t write_max_frame_size;
 
-    /* max size of the whole message, -1 is no limit */
+    /* max size of the whole message (in bytes), -1 is no limit */
     int64_t read_max_msg_size;
 
     /* max frames allowed in a message, -1 is no limit */
     int64_t read_max_num_frames;
+
+    /* max size of received handshake (in bytes), -1 is no limit */
+    int max_handshake_size;
 
     /*
      * random number generator for creating client frames

@@ -300,7 +300,11 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
          */
         return ENDPOINT_READ_SUCCESS;
     case PROTOCOL_HANDSHAKE_FAIL:
-        hhlog(HHLOG_LEVEL_WARNING, "Read invalid handshake. fd: %d", fd);
+        hhlog(HHLOG_LEVEL_DEBUG, "Read invalid handshake. fd: %d", fd);
+        deactivate_conn(conn);
+        return ENDPOINT_READ_ERROR;
+    case PROTOCOL_HANDSHAKE_FAIL_TOO_LARGE:
+        hhlog(HHLOG_LEVEL_DEBUG, "Read too large handshake. fd: %d", fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     default:

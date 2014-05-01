@@ -294,6 +294,7 @@ int main(int argc, char** argv)
     settings.write_max_frame_size = 1024;
     settings.read_max_msg_size = 65537;
     settings.read_max_num_frames = 1024;
+    settings.max_handshake_size = 2048;
     settings.rand_func = test_random;
     protocol_conn* conn =
         protocol_create_conn(&settings, 20, NULL);

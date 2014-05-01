@@ -669,6 +669,7 @@ int main(int argc, char** argv)
     conn_settings->write_max_frame_size = 16 * 1024;
     conn_settings->read_max_msg_size = MAX_MESSAGE_SIZE;
     conn_settings->read_max_num_frames = 1024;
+    conn_settings->max_handshake_size = 2048;
     conn_settings->rand_func = NULL;
     options.port = (uint16_t)atoi(argv[1]);
 

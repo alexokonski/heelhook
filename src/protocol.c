@@ -148,7 +148,11 @@ static int get_num_extra_len_bytes(int64_t payload_len)
     }
 }
 
-/* from http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ */
+/*
+ * Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>
+ * See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
+ */
+
 #define UTF8_ACCEPT 0
 #define UTF8_REJECT 1
 
@@ -762,6 +766,13 @@ protocol_read_handshake(protocol_conn* conn, protocol_endpoint type)
     size_t length = darray_get_len(info->buffer);
 
     if (length < 4) return PROTOCOL_HANDSHAKE_CONTINUE;
+
+    if (type == PROTOCOL_ENDPOINT_SERVER &&
+        conn->settings->max_handshake_size > 0 &&
+        length > (size_t)conn->settings->max_handshake_size)
+    {
+        return PROTOCOL_HANDSHAKE_FAIL_TOO_LARGE;
+    }
 
     bool found_end = false;
     for (size_t i = 0; i < length-3; i++)

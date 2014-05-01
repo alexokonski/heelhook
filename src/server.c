@@ -50,7 +50,7 @@
 #include <unistd.h>
 
 #define SERVER_LISTEN_BACKLOG 512
-#define SERVER_WATCHDOG_FREQ_MS 5
+#define SERVER_WATCHDOG_FREQ_MS 100
 
 struct server_conn
 {
@@ -136,7 +136,7 @@ static server_conn* activate_conn(server* serv, int client_fd)
 
 static event_result queue_write(server_conn* conn)
 {
-    /* queue up writing the handshake response back */
+    /* queue up writing response back */
     event_result er;
     er = event_add_io_event(conn->serv->loop, conn->fd, EVENT_WRITEABLE,
                              write_to_client_callback, conn);
