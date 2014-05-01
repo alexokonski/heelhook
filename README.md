@@ -24,14 +24,10 @@ Notes
 
 References
 ==========
-AutoBahnTestSuite: http://autobahn.ws/testsuite/
-
-WebSocket RFC: http://tools.ietf.org/html/rfc6455
-
-libb64: http://sourceforge.net/projects/libb64
-
-SHA-1 RFC: http://tools.ietf.org/html/rfc3174
-
+AutoBahnTestSuite: http://autobahn.ws/testsuite/  
+WebSocket RFC: http://tools.ietf.org/html/rfc6455  
+libb64: http://sourceforge.net/projects/libb64  
+SHA-1 RFC: http://tools.ietf.org/html/rfc3174  
 cJSON (used only for client example): http://sourceforge.net/projects/cjson/
 
 License
