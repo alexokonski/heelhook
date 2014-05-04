@@ -6,7 +6,7 @@ util.o: util.c util.h
 test_client.o: test/test_client.c test/../client.h test/../config.h \
  test/../endpoint.h test/../protocol.h test/../darray.h test/../util.h \
  test/../event.h test/../error_code.h test/../util.h test/../hhassert.h \
- test/../hhlog.h
+ test/../hhmemory.h test/../hhlog.h
 test_event.o: test/test_event.c test/../event.h test/../util.h \
  test/../util.h
 test_util.o: test/test_util.c test/../util.h
@@ -21,7 +21,8 @@ echoserver.o: servers/echoserver.c servers/../server.h \
  servers/../endpoint.h servers/../protocol.h servers/../darray.h \
  servers/../util.h servers/../config.h servers/../hhlog.h \
  servers/../util.h
-chatserver.o: servers/chatserver.c servers/../hhlog.h servers/../util.h \
+chatserver.o: servers/chatserver.c servers/../hhassert.h \
+ servers/../error_code.h servers/../util.h servers/../hhlog.h \
  servers/../hhmemory.h servers/../inlist.h servers/../server.h \
  servers/../endpoint.h servers/../protocol.h servers/../darray.h \
  servers/../config.h servers/../util.h servers/cJSON.h
