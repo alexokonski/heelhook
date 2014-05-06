@@ -1150,6 +1150,53 @@ protocol_write_handshake_request(
 }
 
 /*
+ * Call this before reading data into the read buffer. If the state is
+ * PROTOCOL_STATE_READ_HANDSHAKE, darray_ensure will be called on the
+ * protocol_handshake buffer, otherwise it will be called on the read_buffer.
+ * Will return a pointer to the buffer that should be read into.
+ */
+char* protocol_prepare_read(protocol_conn* conn, size_t ensure_len)
+{
+    /*
+     * figure out which buffer to read into.  We have a separate buffer for
+     * handshake info we want to keep around for the duration of the connection
+     */
+    darray** read_buffer;
+    if (conn->state == PROTOCOL_STATE_READ_HANDSHAKE)
+    {
+        read_buffer = &conn->info.buffer;
+    }
+    else
+    {
+        read_buffer = &conn->read_buffer;
+    }
+
+    size_t end_pos = darray_get_len((*read_buffer));
+
+    char* buf = darray_ensure(read_buffer, ensure_len);
+    return &buf[end_pos];
+}
+
+/*
+ * Call this after reading data into the read buffer. Will add num_read to
+ * the size of the darray
+ */
+void protocol_update_read(protocol_conn* conn, size_t num_read)
+{
+    darray** read_buffer;
+    if (conn->state == PROTOCOL_STATE_READ_HANDSHAKE)
+    {
+        read_buffer = &conn->info.buffer;
+    }
+    else
+    {
+        read_buffer = &conn->read_buffer;
+    }
+
+    darray_add_len((*read_buffer), num_read);
+}
+
+/*
  * Get the number of times this header appeared in the request
  */
 unsigned protocol_get_num_header_values(protocol_conn* conn, const char* name)

@@ -46,7 +46,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#define ENDPOINT_HEADER_READ_LENGTH (1024 * 2)
 #define ENDPOINT_MAX_READ_LENGTH (1024 * 64)
 #define ENDPOINT_MAX_WRITE_LENGTH (1024 * 64)
 
@@ -342,28 +341,9 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
         return ENDPOINT_READ_CLOSED;
     }
 
-    /*
-     * figure out which buffer to read into.  We have a separate buffer for
-     * handshake info we want to keep around for the duration of the connection
-     */
-    size_t read_len;
-    darray** read_buffer;
-    if (pconn->state == PROTOCOL_STATE_READ_HANDSHAKE)
-    {
-        read_len = ENDPOINT_HEADER_READ_LENGTH;
-        read_buffer = &pconn->info.buffer;
-    }
-    else
-    {
-        read_len = hhmin((size_t)pconn->settings->read_max_msg_size,
-                         ENDPOINT_MAX_READ_LENGTH);
-        read_buffer = &pconn->read_buffer;
-    }
-
-    size_t end_pos = darray_get_len((*read_buffer));
-
-    char* buf = darray_ensure(read_buffer, read_len);
-    buf = &buf[end_pos];
+    size_t read_len = hhmin((size_t)pconn->settings->read_max_msg_size,
+                            ENDPOINT_MAX_READ_LENGTH);
+    char* buf = protocol_prepare_read(pconn, read_len);
 
     ssize_t num_read = read(fd, buf, read_len);
 
@@ -387,7 +367,7 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
               (int)num_read, buf);*/
 
     hhassert(num_read > 0);
-    darray_add_len((*read_buffer), (size_t)num_read);
+    protocol_update_read(pconn, (size_t)num_read);
 
     endpoint_read_result r = ENDPOINT_READ_SUCCESS;
     parse_result pr = PARSE_CONTINUE;
