@@ -89,6 +89,9 @@ static void server_on_message_callback(endpoint* conn, endpoint_msg* msg,
 static void server_on_ping_callback(endpoint* conn_info, char* payload,
                                     int payload_len, void* userdata);
 
+static void server_on_pong_callback(endpoint* conn_info, char* payload,
+                                    int payload_len, void* userdata);
+
 static void server_on_close_callback(endpoint* conn_info, int code,
                                      const char* reason, int reason_len,
                                      void* userdata);
@@ -98,6 +101,7 @@ static endpoint_callbacks g_server_cbs =
     .on_open = server_on_open_callback,
     .on_message = server_on_message_callback,
     .on_ping = server_on_ping_callback,
+    .on_pong = server_on_pong_callback,
     .on_close = server_on_close_callback
 };
 
@@ -155,6 +159,20 @@ static void server_on_ping_callback(endpoint* conn_info, char* payload,
     if (serv->cbs.on_ping != NULL)
     {
         serv->cbs.on_ping(conn, payload, payload_len, serv->userdata);
+    }
+}
+
+static void server_on_pong_callback(endpoint* conn_info, char* payload,
+                                    int payload_len, void* userdata)
+{
+    hhunused(conn_info);
+
+    server_conn* conn = userdata;
+    server* serv = conn->serv;
+
+    if (serv->cbs.on_pong != NULL)
+    {
+        serv->cbs.on_pong(conn, payload, payload_len, serv->userdata);
     }
 }
 

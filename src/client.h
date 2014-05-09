@@ -77,6 +77,8 @@ typedef bool (client_on_connect)(client* c, void* userdata);
 typedef void (client_on_message)(client* c, endpoint_msg* msg, void* userdata);
 typedef void (client_on_ping)(client* c, char* payload, int payload_len,
                               void* userdata);
+typedef void (client_on_pong)(client* c, char* payload, int payload_len,
+                              void* userdata);
 
 /* includes the close code and reason received from the server (if any) */
 typedef void (client_on_close)(client* c, int code, const char* reason,
@@ -95,6 +97,11 @@ typedef struct
      * automatically to conform to the RFC
      */
     client_on_ping* on_ping;
+
+    /*
+     * called when a pong was received
+     */
+    client_on_pong* on_pong;
 
     /* called when connection is about to terminate */
     client_on_close* on_close;
@@ -123,7 +130,7 @@ client_connect_raw(client* c, config_client_options* opt,
                    const char** subprotocols, const char** extensions,
                    const char** extra_headers, void* userdata);
 
-/* forcibly closes the socket and frees all resources */
+/* forcibly closes the socket and frees all resources (does NOT free c)*/
 void client_disconnect(client* c);
 
 /* get the file descriptor for this client */

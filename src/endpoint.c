@@ -233,8 +233,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
             case PROTOCOL_MSG_PING:
                 if (conn->callbacks->on_ping != NULL)
                 {
-                    conn->callbacks->on_ping(conn, msg.data,
-                                             (int)msg.msg_len,
+                    conn->callbacks->on_ping(conn, msg.data, (int)msg.msg_len,
                                              conn->userdata);
                 }
                 msg.type = PROTOCOL_MSG_PONG;
@@ -242,6 +241,11 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 pr = PARSE_CONTINUE_WROTE_DATA;
                 break;
             case PROTOCOL_MSG_PONG:
+                if (conn->callbacks->on_pong != NULL)
+                {
+                    conn->callbacks->on_pong(conn, msg.data, (int)msg.msg_len,
+                                             conn->userdata);
+                }
                 break;
             }
             break;

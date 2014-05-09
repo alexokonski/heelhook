@@ -99,6 +99,8 @@ typedef void (endpoint_on_message)(endpoint* conn, endpoint_msg* msg,
                                    void* userdata);
 typedef void (endpoint_on_ping)(endpoint* conn_info, char* payload,
                                 int payload_len, void* userdata);
+typedef void (endpoint_on_pong)(endpoint* conn_info, char* payload,
+                                int payload_len, void* userdata);
 
 /* includes the close code and reason received from the client (if any) */
 typedef void (endpoint_on_close)(endpoint* conn_info, int code,
@@ -130,6 +132,11 @@ struct endpoint_callbacks
      * automatically to conform to the RFC
      */
     endpoint_on_ping* on_ping;
+
+    /*
+     * called when a pong was received
+     */
+    endpoint_on_pong* on_pong;
 
     /* called when connection is about to terminate */
     endpoint_on_close* on_close;

@@ -72,6 +72,8 @@ typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg,
 typedef void (server_on_ping)(server_conn* conn_info, char* payload,
                               int payload_len, void* userdata);
 
+typedef void (server_on_pong)(server_conn* conn_info, char* payload,
+                              int payload_len, void* userdata);
 /*
  * on_close is called whenever the server is closing the connection for any
  * reason includes the close code and reason received from the client (if any)
@@ -92,6 +94,7 @@ typedef struct
     server_on_connect* on_connect;
     server_on_message* on_message;
     server_on_ping* on_ping;
+    server_on_pong* on_pong;
     server_on_close* on_close;
 } server_callbacks;
 

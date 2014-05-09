@@ -72,6 +72,7 @@ typedef union
 
 static const char* g_addr = NULL;
 static int g_port = 0;
+static int g_mps = 0;
 
 static void usage(char* exec_name)
 {
@@ -90,11 +91,14 @@ static void usage(char* exec_name)
 "    (default: off)\n"
 "-c, --chatserver\n"
 "    Stress test the chatserver implementation found in servers/ of heelhook\n"
-"    (default:on)\n"
+"    (default:off)\n"
+"-m <one_client_mps>, --mps_bench <one_client_mps>\n"
+"    Simple 'message per second' benchmark, sends <one_client_mps> * num\n"
+"    messages per second (default:on with one_client_mps=10)\n"
 "-n, --num\n"
 "    When in autobahn mode, run this many test cases against the fuzzing\n"
 "    server. When not in autobahn mode, the number of concurrent client\n"
-"    connections to make for stress/load testing of a websocket echoserver\n"
+"    connections to make for stress/load testing of a websocket server\n"
 "    (default: 1)\n",
      exec_name);
 }
@@ -146,6 +150,23 @@ static void random_write_time_proc(event_loop* loop, event_time_id id,
     event_delete_time_event(loop, id);
 }
 
+static void mps_write_time_proc(event_loop* loop, event_time_id id,
+                                   void* data)
+{
+    hhunused(id);
+
+    client* c = data;
+    char msg [] = "{param: 'pong'}";
+    client_result r = client_send_ping(c, msg, (int)(sizeof(msg) - 1));
+    if (r != CLIENT_RESULT_SUCCESS)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "could not send client message: %d",
+              client_fd(c));
+        exit(1);
+    }
+    queue_write(c, loop);
+}
+
 static void queue_random_write(int fd, event_loop* loop)
 {
     event_delete_io_event(loop, fd, EVENT_WRITEABLE);
@@ -156,7 +177,12 @@ static void queue_random_write(int fd, event_loop* loop)
     data.fd = fd;
     event_add_time_event(loop, random_write_time_proc,
                          random_ms, data.ptr);
-    hhlog(HHLOG_LEVEL_ERROR, "fd %d waiting for %dms", fd, random_ms);
+    hhlog(HHLOG_LEVEL_DEBUG, "fd %d waiting for %dms", fd, random_ms);
+}
+
+static void queue_mps_write(client* c, event_loop* loop)
+{
+    event_add_time_event(loop, mps_write_time_proc, (MS_PER_S / g_mps), c);
 }
 
 static void test_client_write(event_loop* loop, int fd, void* data)
@@ -203,16 +229,14 @@ static void test_client_read(event_loop* loop, int fd, void* data)
          * errors will have been logged and handled properly by on_close
          * callback
          */
-        event_delete_io_event(loop, fd, EVENT_READABLE);
         return;
     }
 
     hhassert(0);
 }
 
-static void test_client_connect(event_loop* loop, int fd, void* data)
+static bool check_for_errors(int fd, client* c, event_loop* loop)
 {
-    client* c = data;
     int result = 0;
     socklen_t sizeval = sizeof(result);
     int r = getsockopt(fd, SOL_SOCKET, SO_ERROR, &result, &sizeval);
@@ -221,7 +245,7 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
         hhlog(HHLOG_LEVEL_ERROR, "getsockopt failed: %d %s", r,
                   strerror(errno));
         teardown_client(c, loop);
-        return;
+        return false;
     }
 
     if (result != 0)
@@ -229,6 +253,17 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
         hhlog(HHLOG_LEVEL_ERROR, "non-blocking connect() failed: %d %s",
                   result, strerror(result));
         teardown_client(c, loop);
+        return false;
+    }
+
+    return true;
+}
+
+static void test_client_connect(event_loop* loop, int fd, void* data)
+{
+    client* c = data;
+    if (!check_for_errors(fd, c, loop))
+    {
         return;
     }
 
@@ -266,6 +301,26 @@ static void random_client_connect(event_loop* loop, int fd, void* data)
     }
 
     queue_random_write(fd, loop);
+}
+
+static void mps_client_connect(event_loop* loop, int fd, void* data)
+{
+    client* c = data;
+    if (!check_for_errors(fd, c, loop))
+    {
+        return;
+    }
+
+    event_result er;
+    er = event_add_io_event(loop, fd, EVENT_READABLE,
+                            test_client_read, c);
+    if (er != EVENT_RESULT_SUCCESS)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+        exit(1);
+    }
+    queue_mps_write(c, loop);
+    queue_write(c, loop);
 }
 
 static int random_socket_connect(const char* ip_addr, int port,
@@ -332,7 +387,7 @@ static void ab_on_message(client* c, endpoint_msg* msg, void* userdata)
 }
 
 static void ab_on_close(client* c, int code, const char* reason,
-                     int reason_len, void* userdata)
+                        int reason_len, void* userdata)
 {
     event_loop* loop = userdata;
     if (reason_len > 0)
@@ -351,6 +406,23 @@ static void ab_on_close(client* c, int code, const char* reason,
     client_disconnect(c);
 
     event_stop_loop(loop);
+}
+
+static void mps_on_close(client* c, int code, const char* reason,
+                         int reason_len, void* userdata)
+{
+    ab_on_close(c, code, reason, reason_len, userdata);
+}
+
+static void mps_on_pong(client* c, char* payload, int payload_len,
+                        void* userdata)
+{
+    hhunused(c);
+    hhunused(payload);
+    hhunused(payload_len);
+    hhunused(userdata);
+    /*hhlog(HHLOG_LEVEL_DEBUG, "client %d got pong: %.*s", client_fd(c),
+          payload_len, payload);*/
 }
 
 static int convert_to_int(const char* str, char* exec_name)
@@ -544,11 +616,65 @@ static void do_autobahn_test(const char* addr, int port, int num)
 
 }
 
+static void do_mps_test(const char* addr, int port, int num)
+{
+    config_client_options options;
+    options.endp_settings.protocol_buf_init_len = 4 * 1024;
+
+    protocol_settings* conn_settings = &options.endp_settings.conn_settings;
+    conn_settings->write_max_frame_size = 16 * 1024;
+    conn_settings->read_max_msg_size = 16 * 1024;
+    conn_settings->read_max_num_frames = 20 * 1024 * 1024;
+    conn_settings->rand_func = random_callback;
+
+    client_callbacks cbs;
+    cbs.on_connect = NULL;
+    cbs.on_message = NULL;
+    cbs.on_ping = NULL;
+    cbs.on_pong = mps_on_pong;
+    cbs.on_close = mps_on_close;
+
+    static const char* extra_headers[] =
+    {
+        "Origin", "localhost",
+        NULL
+    };
+
+    client* clients = hhmalloc((size_t)num * sizeof(*clients));
+    event_loop* loop = event_create_loop(num + 1024);
+
+    for (int i = 0; i < num; i++)
+    {
+        client* c = &clients[i];
+        client_result cr;
+        event_result er;
+        cr = client_connect_raw(c, &options, &cbs, addr, port, "/",
+                               "localhost:9001", NULL, NULL, extra_headers,
+                               loop);
+        if (cr != CLIENT_RESULT_SUCCESS)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
+            exit(1);
+        }
+        er = event_add_io_event(loop, client_fd(c), EVENT_WRITEABLE,
+                                mps_client_connect, c);
+        if (er != EVENT_RESULT_SUCCESS)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+            exit(1);
+        }
+    }
+
+    event_pump_events(loop, 0);
+    event_destroy_loop(loop);
+}
+
 int main(int argc, char** argv)
 {
     const char* addr = "127.0.0.1";
     const char* port_str = "8080";
     const char* num_str = "1";
+    const char* mps_str = "10";
     bool autobahn_mode = false;
     bool chatserver_mode = false;
     bool debug = false;
@@ -560,6 +686,7 @@ int main(int argc, char** argv)
         { "port"      , required_argument, NULL, 'p'},
         { "autobahn"  , no_argument      , NULL, 'u'},
         { "chatserver", no_argument      , NULL, 'c'},
+        { "mps_bench" , required_argument, NULL, 'm'},
         { "num"       , required_argument, NULL, 'n'},
         { NULL        , 0                , NULL,  0 }
     };
@@ -601,6 +728,10 @@ int main(int argc, char** argv)
             num_str = optarg;
             break;
 
+        case 'm':
+            mps_str = optarg;
+            break;
+
         case '?':
         default:
             error_occurred = true;
@@ -624,9 +755,11 @@ int main(int argc, char** argv)
     /* convert cmd line args to int */
     int port = convert_to_int(port_str, argv[0]);
     int num = convert_to_int(num_str, argv[0]);
+    int mps = convert_to_int(mps_str, argv[0]);
 
     g_port = port;
     g_addr = addr;
+    g_mps = mps;
 
     if (debug)
     {
@@ -645,12 +778,14 @@ int main(int argc, char** argv)
          */
         do_autobahn_test(addr, port, num);
     }
-    else
+    else if (chatserver_mode)
     {
-        hhunused(chatserver_mode);
-
         /* connect num clients in parallel and start sending stuff */
         do_chatserver_test(addr, port, num);
+    }
+    else
+    {
+        do_mps_test(addr, port, num);
     }
 
     exit(0);

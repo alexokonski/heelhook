@@ -84,6 +84,19 @@ static void client_on_ping_callback(endpoint* conn_info, char* payload,
     }
 }
 
+static void client_on_pong_callback(endpoint* conn_info, char* payload,
+                                    int payload_len, void* userdata)
+{
+    hhunused(conn_info);
+
+    client* c = userdata;
+
+    if (c->cbs->on_pong != NULL)
+    {
+        c->cbs->on_pong(c, payload, payload_len, c->userdata);
+    }
+}
+
 static void client_on_close_callback(endpoint* conn_info, int code,
                                      const char* reason, int reason_len,
                                      void* userdata)
@@ -105,6 +118,7 @@ static endpoint_callbacks g_client_cbs =
     .on_open = client_on_open_callback,
     .on_message = client_on_message_callback,
     .on_ping = client_on_ping_callback,
+    .on_pong = client_on_pong_callback,
     .on_close = client_on_close_callback
 };
 

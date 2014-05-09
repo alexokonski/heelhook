@@ -36,14 +36,48 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 static server* g_serv = NULL;
+static uint64_t g_pings_received = 0;
+static uint64_t last_sample_time = 0;
+
+#define MS_PER_S 1000
+#define SAMPLE_RATE 10
+
+static uint64_t event_get_now_ms(void)
+{
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    return (uint64_t)(now.tv_sec * 1000 + now.tv_usec / 1000);
+}
 
 static void on_message_received(server_conn* conn, endpoint_msg* msg,
                                 void* userdata)
 {
     hhunused(userdata);
     server_conn_send_msg(conn, msg);
+}
+
+static void on_ping(server_conn* conn_info, char* payload,
+                    int payload_len, void* userdata)
+{
+    hhunused(conn_info);
+    hhunused(payload);
+    hhunused(payload_len);
+    hhunused(userdata);
+
+    g_pings_received++;
+
+    uint64_t now = event_get_now_ms();
+    if (now - last_sample_time >= (SAMPLE_RATE * MS_PER_S))
+    {
+        float secs_elapsed = (now - last_sample_time) / MS_PER_S;
+        hhlog(HHLOG_LEVEL_DEBUG, "current messages per second: %f",
+              ((float)g_pings_received / (float)secs_elapsed));
+        g_pings_received = 0;
+        last_sample_time = now;
+    }
 }
 
 static bool
@@ -116,7 +150,7 @@ int main(int argc, char** argv)
 
     config_server_options options;
     options.bindaddr = NULL;
-    options.max_clients = 10;
+    options.max_clients = 150;
 
     options.endp_settings.protocol_buf_init_len = 4 * 1024;
 
@@ -128,11 +162,14 @@ int main(int argc, char** argv)
     conn_settings->rand_func = NULL;
     options.port = (uint16_t)atoi(argv[1]);
 
-    server_callbacks callbacks;
-    callbacks.on_open = on_open;
-    callbacks.on_message = on_message_received;
-    callbacks.on_ping = NULL;
-    callbacks.on_close = on_close;
+    server_callbacks callbacks =
+    {
+        .on_open = on_open,
+        .on_connect = NULL,
+        .on_message = on_message_received,
+        .on_ping = on_ping,
+        .on_close = on_close
+    };
 
     hhlog_set_options(&g_log_options);
 
