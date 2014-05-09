@@ -807,9 +807,11 @@ protocol_read_handshake(protocol_conn* conn, protocol_endpoint type)
     switch (type)
     {
     case PROTOCOL_ENDPOINT_SERVER:
+        hhassert(conn->state == PROTOCOL_STATE_READ_HANDSHAKE);
         conn->state = PROTOCOL_STATE_WRITE_HANDSHAKE;
         break;
     case PROTOCOL_ENDPOINT_CLIENT:
+        hhassert(conn->state == PROTOCOL_STATE_READ_HANDSHAKE);
         conn->state = PROTOCOL_STATE_CONNECTED;
         buf += 2;
         hhassert(buf <= end_buf);
@@ -1114,7 +1116,6 @@ protocol_write_handshake_request(
     /* TODO: prettify this, combine with append_header_list */
     while (extra_headers != NULL && (*extra_headers) != NULL)
     {
-        /* 4 for colon and newlines in header_template, and null term */
         size_t key_len = strlen(*extra_headers);
         const char* key = *extra_headers;
         extra_headers++;
@@ -1608,10 +1609,10 @@ protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
         int64_t total_frame_len =
             2 + (int)num_mask_bytes + num_extra_len_bytes + payload_len;
 
+        hhassert(total_frame_len >= 0);
         /* make sure there is enough room for this frame */
-        /* TODO: darray_add_len should take size_t because of the next line */
         char* data = darray_ensure(&conn->write_buffer,
-                                   (unsigned)total_frame_len);
+                                   (size_t)total_frame_len);
 
         /* get the data */
         data = &data[darray_get_len(conn->write_buffer)];
@@ -1696,8 +1697,7 @@ protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
         }
 
         /* bookkeeping */
-        /* TODO: darray_add_len should take size_t because of the next line */
-        darray_add_len(conn->write_buffer, (unsigned)total_frame_len);
+        darray_add_len(conn->write_buffer, (size_t)total_frame_len);
         msg_data += payload_len;
         payload_num_written += payload_len;
         num_written += total_frame_len;

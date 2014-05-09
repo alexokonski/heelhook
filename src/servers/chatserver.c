@@ -321,7 +321,7 @@ static void create_room(all_data* data, chatroom_client* c,
     }
 
     chatroom* room = allocate_room(data);
-    if (data->room_free_head == NULL)
+    if (room == NULL)
     {
         char error_str[] = "{\"create_error\":\"max rooms reached\"}";
         send_msg(c, error_str, sizeof(error_str) - 1);

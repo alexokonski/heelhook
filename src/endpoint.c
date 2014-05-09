@@ -431,9 +431,9 @@ endpoint_send_handshake_response(
     hhassert(conn->type == ENDPOINT_SERVER);
 
     protocol_handshake_result hr;
-    if ((hr=protocol_write_handshake_response(&conn->pconn, protocol,
-                                              extensions)) !=
-            PROTOCOL_HANDSHAKE_SUCCESS)
+    hr = protocol_write_handshake_response(&conn->pconn, protocol,
+                                           extensions);
+    if (hr != PROTOCOL_HANDSHAKE_SUCCESS)
     {
        hhlog(HHLOG_LEVEL_ERROR,
                  "Error writing handshake. conn_ptr: %p, err: %d", conn, hr);
@@ -475,9 +475,7 @@ int endpoint_init(endpoint* conn, endpoint_type type,
 {
     conn->type = type;
     int r = protocol_init_conn(&conn->pconn, &(settings->conn_settings),
-        settings->protocol_buf_init_len,
-        NULL
-    );
+                               settings->protocol_buf_init_len, NULL);
     conn->callbacks = callbacks;
     conn->userdata = userdata;
     endpoint_state_clear(conn);
