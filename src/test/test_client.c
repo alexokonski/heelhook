@@ -94,7 +94,8 @@ static void usage(char* exec_name)
 "    (default:off)\n"
 "-m <one_client_mps>, --mps_bench <one_client_mps>\n"
 "    Simple 'message per second' benchmark, sends <one_client_mps> * num\n"
-"    messages per second (default:on with one_client_mps=10)\n"
+"    messages per second. one_client_mps must be greater than 0 and less than\n"
+"    or equal to 1000 (default:on with one_client_mps=10)\n"
 "-n, --num\n"
 "    When in autobahn mode, run this many test cases against the fuzzing\n"
 "    server. When not in autobahn mode, the number of concurrent client\n"
@@ -756,6 +757,11 @@ int main(int argc, char** argv)
     int port = convert_to_int(port_str, argv[0]);
     int num = convert_to_int(num_str, argv[0]);
     int mps = convert_to_int(mps_str, argv[0]);
+    if (mps < 0 || mps > 1000)
+    {
+        usage(argv[0]);
+        exit(1);
+    }
 
     g_port = port;
     g_addr = addr;
