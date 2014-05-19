@@ -156,7 +156,7 @@ static int get_num_extra_len_bytes(int64_t payload_len)
 #define UTF8_ACCEPT 0
 #define UTF8_REJECT 1
 
-static const uint8_t utf8d[] = {
+static const uint32_t utf8d[] = {
   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 00..1f
   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 20..3f
   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, // 40..5f
@@ -204,6 +204,7 @@ static void mask_data(char* data, size_t len, char* mask_key,
                       uint32_t* codepoint)
 {
     uint8_t* d = (uint8_t*)data;
+
     for (size_t i = 0; i < len; i++)
     {
         if (mask_key != NULL)
@@ -1373,24 +1374,6 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
             if (hdr->payload_processed == hdr->payload_len &&
                 conn->valid_state.state != UTF8_REJECT)
             {
-                size_t end_pos = msg->start_pos + (size_t)msg->msg_len;
-                char* frame_end = &raw_buffer[end_pos];
-
-                /*
-                 * we just masked and moved the data from this frame in one
-                 * step, now move the rest of the buffer
-                 */
-                char* remainder_start = data + len;
-                hhassert(data_end >= remainder_start);
-                size_t remainder_len = (size_t)(data_end - remainder_start);
-                memmove(frame_end, remainder_start, remainder_len);
-
-                /* our darray just got smaller */
-                darray_sub_len(conn->read_buffer,
-                               (unsigned)(remainder_start - frame_end));
-
-                pos -= (size_t)(remainder_start - frame_end);
-
                 /* we just finished processing a frame... clear hdr */
                 hdr->payload_len = -1;
                 frame_finished = true;
@@ -1436,24 +1419,6 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
                 conn->valid_state.state != UTF8_REJECT)
 
             {
-                size_t end_pos = msg->start_pos + (size_t)msg->msg_len;
-                char* frame_end = &raw_buffer[end_pos];
-
-                /*
-                 * we just masked and moved the data from this frame in one
-                 * step, now move the rest of the buffer
-                 */
-                char* remainder_start = data + len;
-                hhassert(data_end >= remainder_start);
-                size_t remainder_len = (size_t)(data_end - remainder_start);
-                memmove(frame_end, remainder_start, remainder_len);
-
-                /* our darray just got smaller */
-                darray_sub_len(conn->read_buffer,
-                               (unsigned)(remainder_start - frame_end));
-
-                pos -= (size_t)(remainder_start - frame_end);
-
                 /* we just finished processing a frame... clear hdr */
                 hdr->payload_len = -1;
 
