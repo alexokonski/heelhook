@@ -696,7 +696,7 @@ int main(int argc, char** argv)
     while (1)
     {
         int option_index = 0;
-        int c = getopt_long(argc, argv, "uda:p:n:", long_options,
+        int c = getopt_long(argc, argv, "uda:p:n:m:", long_options,
                             &option_index);
         if (c == -1)
         {
