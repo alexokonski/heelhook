@@ -27,7 +27,7 @@ $(function() {
 
     function addRoomsToTable(rooms)
     {
-        var obj = $("tbody");
+        var obj = $("#rooms").find("tbody").empty();
         for (var i = 0; i < rooms.length; i++)
         {
             if (webSocket.roomName == rooms[i])
@@ -54,7 +54,6 @@ $(function() {
         }
 
         obj.on("click button.join_button", joinRoom);
-        $("#roomlist").replaceWith(obj);
         if (rooms.length > 0)
         {
             $("#rooms").show();
