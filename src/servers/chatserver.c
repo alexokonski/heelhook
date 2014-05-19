@@ -365,6 +365,12 @@ static void create_room(all_data* data, chatroom_client* c,
  *}
  *
  *{
+ *    "request": {
+ *        "value": "get_clients"
+ *    }
+ *}
+ *
+ *{
  *    "message": "anything here broadcast to everyone in room"
  *}
  *
@@ -374,6 +380,13 @@ static void create_room(all_data* data, chatroom_client* c,
  *    "rooms": [
  *        "<room_name_1>",
  *        "<room_name_2>"
+ *    ]
+ *}
+ *
+ *{
+ *    "clients": [
+ *        "<client_name_1>",
+ *        "<client_name_2>"
  *    ]
  *}
  *
