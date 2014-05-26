@@ -57,9 +57,12 @@ struct server_conn
     int fd;
     endpoint endp;
     server* serv;
-    void* userdata;
-    server_conn* next;
-    server_conn* prev;
+
+    union data_t
+    {
+        void* userdata;
+        server_conn* next;
+    } data;
 };
 
 struct server
@@ -68,10 +71,11 @@ struct server
     event_time_id watchdog_id;
     int fd;
     server_conn* connections;
-    server_conn* active_head;
+    /*server_conn* active_head;
     server_conn* active_tail;
+    server_conn* free_tail;*/
     server_conn* free_head;
-    server_conn* free_tail;
+    int num_connected;
     event_loop* loop;
     config_server_options options;
     server_callbacks cbs;
@@ -108,7 +112,7 @@ static endpoint_callbacks g_server_cbs =
 static int init_conn(server_conn* conn, server* serv)
 {
     conn->serv = serv;
-    conn->userdata = NULL;
+    conn->data.userdata = NULL;
     int r = endpoint_init(&conn->endp, ENDPOINT_SERVER,
                           &serv->options.endp_settings, &g_server_cbs, conn);
 
@@ -126,11 +130,15 @@ static server_conn* activate_conn(server* serv, int client_fd)
 
     server_conn* conn = serv->free_head;
 
+#if 0
     /* pop the next free connection object off the head of the list */
     INLIST_REMOVE(serv, conn, next, prev, free_head, free_tail);
 
     /* push it to the back of the active list of connections */
     INLIST_APPEND(serv, conn, next, prev, active_head, active_tail);
+#endif
+    serv->free_head = conn->data.next;
+    serv->num_connected++;
 
     conn->fd = client_fd;
     endpoint_reset(&conn->endp);
@@ -198,17 +206,23 @@ static void server_on_close_callback(endpoint* conn_info, int code,
     /* close the socket */
     close(conn->fd);
 
+#if 0
     /* take this client out of the active list */
     INLIST_REMOVE(serv, conn, next, prev, active_head, active_tail);
 
     /* put it on the end of the free list */
     INLIST_APPEND(serv, conn, next, prev, free_head, free_tail);
+#endif
+    conn->fd = -1;
+    conn->data.next = serv->free_head;
+    serv->free_head = conn;
+    serv->num_connected--;
 
     /*
      * if we're stopping, and we were the last connection, tear down the
      * event loop
      */
-    if (serv->stopping && serv->active_head == NULL)
+    if (serv->stopping && serv->num_connected == 0)
     {
         event_stop_loop(serv->loop);
     }
@@ -424,10 +438,12 @@ server* server_create(config_server_options* options,
     if (serv == NULL) return NULL;
 
     serv->stopping = false;
-    serv->active_head = NULL;
+    /*serv->active_head = NULL;
     serv->active_tail = NULL;
     serv->free_head = NULL;
-    serv->free_tail = NULL;
+    serv->free_tail = NULL;*/
+    serv->free_head = NULL;
+    serv->num_connected = 0;
     serv->cbs = *callbacks;
     serv->options = *options;
     serv->userdata = userdata;
@@ -443,15 +459,29 @@ server* server_create(config_server_options* options,
      * all available connection objects are 'free', initialize each and add it
      * to the free list
      */
+    serv->free_head = &serv->connections[0];
     for (i = 0; i < max_clients; i++)
     {
         server_conn* conn = &serv->connections[i];
-        INLIST_APPEND(serv, conn,  next, prev, free_head, free_tail);
+        conn->fd = -1;
+
+        /*INLIST_APPEND(serv, conn,  next, prev, free_head, free_tail);*/
+
         if (init_conn(conn, serv) < 0)
         {
             i++; /* need to do this so loop in err_create works correctly */
             goto err_create;
         }
+
+        if (i < max_clients - 1)
+        {
+            conn->data.next = &serv->connections[i+1];
+        }
+        else
+        {
+            conn->data.next = NULL;
+        }
+
     }
 
     return serv;
@@ -487,13 +517,13 @@ void server_destroy(server* serv)
 /* set per-connection userdata */
 void server_conn_set_userdata(server_conn* conn, void* userdata)
 {
-    conn->userdata = userdata;
+    conn->data.userdata = userdata;
 }
 
 /* get per-connection userdata */
 void* server_conn_get_userdata(server_conn* conn)
 {
-    return conn->userdata;
+    return conn->data.userdata;
 }
 
 static void server_teardown(server* serv)
@@ -509,16 +539,22 @@ static void server_teardown(server* serv)
      * if we don't currently have any client connections, we're pretty
      * much done
      */
-    if (serv->active_head == NULL)
+    if (serv->num_connected == 0)
     {
         event_stop_loop(serv->loop);
         return;
     }
 
     /* close each connection */
-    INLIST_FOREACH(serv,server_conn,conn,next,prev,active_head,active_tail)
+    /*INLIST_FOREACH(serv,server_conn,conn,next,prev,active_head,active_tail)*/
+    for (int i = 0; i < serv->options.max_clients; i++)
     {
-        const char msg[] = "server shutting down";
+        server_conn* conn = &serv->connections[i];
+        if (conn->fd == -1)
+        {
+            continue;
+        }
+        static const char msg[] = "server shutting down";
         server_conn_close(conn, HH_ERROR_GOING_AWAY, msg, sizeof(msg)-1);
     }
 }
