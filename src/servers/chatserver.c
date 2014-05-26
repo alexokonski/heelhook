@@ -548,7 +548,7 @@ on_open(server_conn* conn, int* subprotocol_out, int* extensions_out,
 
     unsigned num_protocols = server_get_num_client_subprotocols(conn);
 
-    hhlog(HHLOG_LEVEL_DEBUG, "Got subprotocols [");
+    hhlog(HHLOG_LEVEL_DEBUG, "%p: Got subprotocols [", conn);
     bool found = false;
     for (unsigned i = 0; i < num_protocols; i++)
     {
@@ -686,12 +686,15 @@ int main(int argc, char** argv)
     conn_settings->rand_func = NULL;
     options.port = (uint16_t)atoi(argv[1]);
 
-    server_callbacks callbacks;
-    callbacks.on_open = on_open;
-    callbacks.on_message = on_message_received;
-    callbacks.on_connect = on_connect;
-    callbacks.on_ping = NULL;
-    callbacks.on_close = on_close;
+    server_callbacks callbacks =
+    {
+        .on_open = on_open,
+        .on_message = on_message_received,
+        .on_connect = on_connect,
+        .on_ping = NULL,
+        .on_pong = NULL,
+        .on_close = on_close
+    };
 
     hhlog_set_options(&g_log_options);
 

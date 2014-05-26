@@ -89,7 +89,7 @@ on_open(server_conn* conn, int* subprotocol_out, int* extensions_out,
     hhunused(conn);
     hhunused(userdata);
     unsigned num_protocols = server_get_num_client_subprotocols(conn);
-    hhlog(HHLOG_LEVEL_DEBUG, "Got subprotocols [");
+    hhlog(HHLOG_LEVEL_DEBUG, "%p: Got subprotocols [", conn);
     for (unsigned i = 0; i < num_protocols; i++)
     {
         hhlog(HHLOG_LEVEL_DEBUG, "    %s",
