@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "event.h"
+#include "hhclock.h"
 #include "hhmemory.h"
 #include "platform.h"
 #include "pqueue.h"
@@ -216,13 +217,6 @@ void event_delete_io_event(event_loop* loop, int fd, int mask)
     event_platform_remove(loop, fd, mask);
 }
 
-static uint64_t event_get_now_ms(void)
-{
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    return (uint64_t)(now.tv_sec * 1000 + now.tv_usec / 1000);
-}
-
 event_time_id event_add_time_event(event_loop* loop,
                                    event_time_callback* callback,
                                    uint64_t frequency_ms, void* data)
@@ -237,7 +231,7 @@ event_time_id event_add_time_event(event_loop* loop,
     et->data = data;
     et->callback = callback;
     et->frequency_ms = frequency_ms;
-    et->next_fire_time_ms = event_get_now_ms() + frequency_ms;
+    et->next_fire_time_ms = hhclock_get_now_ms() + frequency_ms;
 
     /* now put it in the priority queue */
     pqueue_value val;
@@ -295,7 +289,7 @@ static void event_process_all_events(event_loop* loop, int flags)
     else if (pqueue_get_size(loop->time_events) > 0)
     {
         et = pqueue_peek(loop->time_events).p_val;
-        now = event_get_now_ms();
+        now = hhclock_get_now_ms();
         time_ms = (int)(et->next_fire_time_ms - now);
 
         /* don't block if somehow we went back to the future */
@@ -320,7 +314,7 @@ static void event_process_all_events(event_loop* loop, int flags)
     /* fire time events */
     if (pqueue_get_size(loop->time_events) > 0)
     {
-        now = event_get_now_ms();
+        now = hhclock_get_now_ms();
         et = pqueue_peek(loop->time_events).p_val;
         while (now >= et->next_fire_time_ms)
         {

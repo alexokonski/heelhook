@@ -1,4 +1,4 @@
-/* platform - platform-secific defines
+/* hhclock - Abstraction layer for clocks
  *
  * Copyright (c) 2013, Alex O'Konski
  * All rights reserved.
@@ -27,15 +27,22 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "platform.h"
 
-#ifdef __linux__
-    #define HAVE_EPOLL
+#include <stdint.h>
+#include <time.h>
+
+static inline uint64_t hhclock_get_now_ms(void)
+{
+#ifdef HAVE_MONOTONIC_CLOCK
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)((uint64_t)now.tv_sec*1000 +
+                         (uint64_t)now.tv_nsec/1000000);
 #else
-    #define HAVE_POLL
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    return (uint64_t)((uint64_t)now.tv_sec*1000 + (uint64_t)now.tv_usec/1000);
 #endif
+}
 
-#include <unistd.h>
-
-#if _POSIX_TIMERS > 0 && defined(_POSIX_MONOTONIC_CLOCK) && _POSIX_C_SOURCE >= 199309
-    #define HAVE_MONOTONIC_CLOCK
-#endif

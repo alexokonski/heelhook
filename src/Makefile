@@ -2,7 +2,7 @@ STD= -std=c99 -pedantic
 WARN= -Wall -Wextra -Werror
 OPT?= -O2
 DEBUG= -g -ggdb
-SYMBOL= -D_BSD_SOURCE -D_POSIX_C_SOURCE
+SYMBOL= -D_BSD_SOURCE -D_POSIX_C_SOURCE=199309
 VPATH= test sha1 base64 servers
 EXT_SYMBOL=
 
