@@ -1557,12 +1557,6 @@ protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
         return PROTOCOL_RESULT_FAIL;
     }
 
-    /* please provide valid inputs... */
-    if (opcode == PROTOCOL_OPCODE_TEXT && !is_valid_utf8(msg_data, msg_len))
-    {
-        return PROTOCOL_RESULT_FAIL;
-    }
-
     int64_t num_written = 0;
     int64_t payload_num_written = 0;
     unsigned num_mask_bytes = (type == PROTOCOL_ENDPOINT_SERVER) ? 0 : 4;

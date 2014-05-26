@@ -55,17 +55,17 @@ struct pqueue
     darray* heap; /* parallel darray of type pqueue_elem* */
 };
 
-static int pq_parent(int i)
+static inline int pq_parent(int i)
 {
     return (i - 1) / 2;
 }
 
-static int pq_left(int i)
+static inline int pq_left(int i)
 {
     return (2 * i) + 1;
 }
 
-static int pq_right(int i)
+static inline int pq_right(int i)
 {
     return (2 * i) + 2;
 }
