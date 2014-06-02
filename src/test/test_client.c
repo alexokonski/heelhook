@@ -53,7 +53,7 @@
 #define RANDOM_RATIO 1.0
 #define CHATTY_RATIO 0.0
 #define MS_PER_S 1000
-#define TIME_RANGE_S 2
+#define TIME_RANGE_S 10
 
 static hhlog_options g_log_options =
 {
@@ -331,7 +331,7 @@ static void write_random_bytes(event_loop* loop, int fd, void* data)
 {
     hhunused(data);
 
-    int bytes[1024 / sizeof(int)];
+    int bytes[4096 / sizeof(int)];
     for (size_t i = 0; i < hhcountof(bytes); i++)
     {
         bytes[i] = random();
@@ -696,7 +696,7 @@ int main(int argc, char** argv)
     while (1)
     {
         int option_index = 0;
-        int c = getopt_long(argc, argv, "uda:p:n:m:", long_options,
+        int c = getopt_long(argc, argv, "ucda:p:n:m:", long_options,
                             &option_index);
         if (c == -1)
         {
