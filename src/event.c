@@ -217,9 +217,19 @@ void event_delete_io_event(event_loop* loop, int fd, int mask)
     event_platform_remove(loop, fd, mask);
 }
 
-event_time_id event_add_time_event(event_loop* loop,
-                                   event_time_callback* callback,
-                                   uint64_t frequency_ms, void* data)
+event_time_id
+event_add_time_event(event_loop* loop,
+                     event_time_callback* callback, uint64_t frequency_ms,
+                     void* data)
+{
+    return event_add_time_event_with_delay(loop,callback,frequency_ms,0,data);
+}
+
+event_time_id
+event_add_time_event_with_delay(event_loop* loop,
+                                event_time_callback* callback,
+                                uint64_t frequency_ms,
+                                uint64_t initial_delay_ms, void* data)
 {
     /* initialize the new time event */
     event_time* et = hhmalloc(sizeof(*et));
@@ -231,7 +241,8 @@ event_time_id event_add_time_event(event_loop* loop,
     et->data = data;
     et->callback = callback;
     et->frequency_ms = frequency_ms;
-    et->next_fire_time_ms = hhclock_get_now_ms() + frequency_ms;
+    et->next_fire_time_ms =
+        hhclock_get_now_ms() + frequency_ms + initial_delay_ms;
 
     /* now put it in the priority queue */
     pqueue_value val;

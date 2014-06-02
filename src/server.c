@@ -33,6 +33,7 @@
 #include "event.h"
 #include "inlist.h"
 #include "hhassert.h"
+#include "hhclock.h"
 #include "hhlog.h"
 #include "hhmemory.h"
 #include "protocol.h"
@@ -40,6 +41,8 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <limits.h>
+#include <inttypes.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -49,8 +52,13 @@
 #include <time.h>
 #include <unistd.h>
 
-#define SERVER_LISTEN_BACKLOG 512
-#define SERVER_WATCHDOG_FREQ_MS 100
+#define SERVER_LISTEN_BACKLOG               512
+#define SERVER_WATCHDOG_FREQ_MS             100
+#define SERVER_HANDSHAKE_TIMEOUT_FREQ_MS    300
+#define SERVER_HEARTBEAT_PENDING            0
+#define SERVER_HEARTEAT_RECEIVED            ULLONG_MAX
+
+static char g_heartbeat_msg[] = "heartbeat";
 
 struct server_conn
 {
@@ -58,20 +66,30 @@ struct server_conn
     endpoint endp;
     server* serv;
     void* userdata;
-    server_conn* next;
-    server_conn* prev;
+    uint64_t timeout;
+    server_conn* next; /* in either active or free list */
+    server_conn* prev; /* in either active or free list */
+    server_conn* timeout_next; /* in either handshake or heartbeat list */
+    server_conn* timeout_prev; /* in either handshake or heartbeat list */
 };
 
 struct server
 {
     bool stopping;
     event_time_id watchdog_id;
+    event_time_id heartbeat_id;
+    event_time_id heartbeat_expire_id;
+    event_time_id handshake_timeout_id;
     int fd;
     server_conn* connections;
     server_conn* active_head;
     server_conn* active_tail;
     server_conn* free_head;
     server_conn* free_tail;
+    server_conn* handshake_head;
+    server_conn* handshake_tail;
+    server_conn* heartbeat_head;
+    server_conn* heartbeat_tail;
     event_loop* loop;
     config_server_options options;
     server_callbacks cbs;
@@ -132,10 +150,43 @@ static server_conn* activate_conn(server* serv, int client_fd)
     /* push it to the back of the active list of connections */
     INLIST_APPEND(serv, conn, next, prev, active_head, active_tail);
 
+    /* push it to the back of the list of hanshake timeouts */
+    config_server_options* opt = &serv->options;
+    if (opt->handshake_timeout_ms > 0)
+    {
+        INLIST_APPEND(serv, conn, timeout_next, timeout_prev, handshake_head,
+                      handshake_tail);
+        conn->timeout = hhclock_get_now_ms() + opt->handshake_timeout_ms;
+    }
+
     conn->fd = client_fd;
     endpoint_reset(&conn->endp);
 
     return conn;
+}
+
+static void deactivate_conn(server* serv, server_conn* conn)
+{
+    /* take this client out of the active list */
+    INLIST_REMOVE(serv, conn, next, prev, active_head, active_tail);
+
+    /* put it on the end of the free list */
+    INLIST_APPEND(serv, conn, next, prev, free_head, free_tail);
+
+    /* remove from any timeout lists */
+    switch (conn->endp.pconn.state)
+    {
+    case PROTOCOL_STATE_READ_HANDSHAKE:
+    case PROTOCOL_STATE_WRITE_HANDSHAKE:
+        INLIST_REMOVE(serv, conn, timeout_next, timeout_prev, handshake_head,
+                      handshake_tail);
+        break;
+
+    case PROTOCOL_STATE_CONNECTED:
+        INLIST_REMOVE(serv, conn, timeout_next, timeout_prev, heartbeat_head,
+                      heartbeat_tail);
+        break;
+    }
 }
 
 static event_result queue_write(server_conn* conn)
@@ -172,6 +223,18 @@ static void server_on_pong_callback(endpoint* conn_info, char* payload,
 
     if (serv->cbs.on_pong != NULL)
     {
+        if (serv->options.heartbeat_interval_ms > 0 &&
+            serv->options.heartbeat_ttl_ms > 0)
+        {
+            if (payload_len == sizeof(g_heartbeat_msg) - 1 &&
+                memcmp(payload, g_heartbeat_msg, payload_len) == 0)
+            {
+                /* this conn is safe, move to the back of the list */
+                conn->timeout = SERVER_HEARTEAT_RECEIVED;
+                INLIST_MOVE_BACK(serv, conn, timeout_next, timeout_prev,
+                                 heartbeat_head, heartbeat_tail);
+            }
+        }
         serv->cbs.on_pong(conn, payload, payload_len, serv->userdata);
     }
 }
@@ -198,11 +261,8 @@ static void server_on_close_callback(endpoint* conn_info, int code,
     /* close the socket */
     close(conn->fd);
 
-    /* take this client out of the active list */
-    INLIST_REMOVE(serv, conn, next, prev, active_head, active_tail);
-
-    /* put it on the end of the free list */
-    INLIST_APPEND(serv, conn, next, prev, free_head, free_tail);
+    /* remove from active list */
+    deactivate_conn(serv, conn);
 
     /*
      * if we're stopping, and we were the last connection, tear down the
@@ -329,6 +389,19 @@ server_on_open_callback(endpoint* conn_info,
         serv->cbs.on_connect(conn, serv->userdata);
     }
 
+    INLIST_REMOVE(serv, conn, timeout_next, timeout_prev, handshake_head,
+                  handshake_tail);
+
+    config_server_options* opt = &serv->options;
+    uint64_t hb_interval = opt->heartbeat_interval_ms;
+    uint64_t hb_ttl = opt->heartbeat_ttl_ms;
+    if (hb_interval > 0 && hb_ttl > 0)
+    {
+        conn->timeout = SERVER_HEARTEAT_RECEIVED;
+        INLIST_APPEND(serv, conn, timeout_next, timeout_prev, heartbeat_head,
+                      heartbeat_tail);
+    }
+
     return true;
 
 reject_client:
@@ -428,6 +501,14 @@ server* server_create(config_server_options* options,
     serv->active_tail = NULL;
     serv->free_head = NULL;
     serv->free_tail = NULL;
+    serv->handshake_head = NULL;
+    serv->handshake_tail = NULL;
+    serv->heartbeat_head = NULL;
+    serv->heartbeat_tail = NULL;
+    serv->watchdog_id = EVENT_INVALID_TIME_ID;
+    serv->heartbeat_id = EVENT_INVALID_TIME_ID;
+    serv->heartbeat_expire_id = EVENT_INVALID_TIME_ID;
+    serv->handshake_timeout_id = EVENT_INVALID_TIME_ID;
     serv->cbs = *callbacks;
     serv->options = *options;
     serv->userdata = userdata;
@@ -518,7 +599,7 @@ static void server_teardown(server* serv)
     /* close each connection */
     INLIST_FOREACH(serv,server_conn,conn,next,prev,active_head,active_tail)
     {
-        const char msg[] = "server shutting down";
+        static const char msg[] = "server shutting down";
         server_conn_close(conn, HH_ERROR_GOING_AWAY, msg, sizeof(msg)-1);
     }
 }
@@ -532,8 +613,96 @@ static void stop_watchdog(event_loop* loop, event_time_id id, void* data)
         /* we aren't needed any more */
         event_delete_time_event(loop, id);
 
+        if (serv->heartbeat_id != EVENT_INVALID_TIME_ID)
+        {
+            event_delete_time_event(loop, serv->heartbeat_id);
+        }
+
+        if (serv->heartbeat_expire_id != EVENT_INVALID_TIME_ID)
+        {
+            event_delete_time_event(loop, serv->heartbeat_expire_id);
+        }
+
+        if (serv->handshake_timeout_id != EVENT_INVALID_TIME_ID)
+        {
+            event_delete_time_event(loop, serv->handshake_timeout_id);
+        }
+
         /* tear down everything else */
         server_teardown(serv);
+    }
+}
+
+static void send_heartbeats(event_loop* loop, event_time_id id, void* data)
+{
+    hhunused(loop);
+    hhunused(id);
+
+    server* serv = data;
+    uint64_t hb_ttl = serv->options.heartbeat_ttl_ms;
+    bool send_ping = (hb_ttl > 0);
+    INLIST_FOREACH(serv, server_conn, conn, timeout_next, timeout_prev,
+                   heartbeat_head, heartbeat_tail)
+    {
+        if (send_ping)
+        {
+            server_conn_send_ping(conn, g_heartbeat_msg,
+                                  sizeof(g_heartbeat_msg)-1);
+            conn->timeout = SERVER_HEARTBEAT_PENDING;
+        }
+        else
+        {
+            server_conn_send_pong(conn, g_heartbeat_msg,
+                                  sizeof(g_heartbeat_msg)-1);
+        }
+    }
+}
+
+static void expire_heartbeats(event_loop* loop, event_time_id id, void* data)
+{
+    hhunused(loop);
+    hhunused(id);
+
+    server* serv = data;
+    INLIST_FOREACH(serv, server_conn, conn, timeout_next, timeout_prev,
+                   heartbeat_head, heartbeat_tail)
+    {
+        if (conn->timeout != SERVER_HEARTEAT_RECEIVED)
+        {
+            hhlog(HHLOG_LEVEL_DEBUG, "closing, heartbeat expired for: %d",
+                  conn->fd);
+            server_on_close_callback(&conn->endp, 0, NULL, 0, conn);
+        }
+        else
+        {
+            /* this list is sorted by failed to not failed, so we're done */
+            break;
+        }
+    }
+}
+
+static void timeout_handshakes(event_loop* loop, event_time_id id, void* data)
+{
+    hhunused(loop);
+    hhunused(id);
+
+    server* serv = data;
+    uint64_t now = hhclock_get_now_ms();
+    INLIST_FOREACH(serv, server_conn, conn, timeout_next, timeout_prev,
+                   handshake_head, handshake_tail)
+    {
+        if (conn->timeout >= now)
+        {
+            hhlog(HHLOG_LEVEL_DEBUG,
+                "closing, handshake timed out %"PRIu64" >= %"PRIu64" (%d, %p)",
+                  conn->timeout, now, conn->fd, conn);
+            server_on_close_callback(&conn->endp, 0, NULL, 0, conn);
+        }
+        else
+        {
+            /* this list is sorted by time, so we're done */
+            break;
+        }
     }
 }
 
@@ -718,6 +887,31 @@ server_result server_listen(server* serv)
     serv->watchdog_id =
         event_add_time_event(serv->loop, stop_watchdog,
                              SERVER_WATCHDOG_FREQ_MS, serv);
+
+    uint64_t hb_interval = serv->options.heartbeat_interval_ms;
+    uint64_t hb_ttl = serv->options.heartbeat_ttl_ms;
+    uint64_t handshake_timeout = serv->options.handshake_timeout_ms;
+    if (hb_interval > 0)
+    {
+        /* send a ping every hb_interval */
+        serv->heartbeat_id =
+            event_add_time_event(serv->loop,send_heartbeats,hb_interval,serv);
+
+        if (hb_ttl > 0)
+        {
+            /* check for responses every hb_interval, hb_ttl seconds after */
+            serv->heartbeat_expire_id =
+                event_add_time_event_with_delay(serv->loop, expire_heartbeats,
+                                                hb_interval, hb_ttl, serv);
+        }
+    }
+
+    if (handshake_timeout > 0)
+    {
+        serv->handshake_timeout_id =
+            event_add_time_event(serv->loop, timeout_handshakes,
+                                 SERVER_HANDSHAKE_TIMEOUT_FREQ_MS, serv);
+    }
 
     /* block and process all connections */
     event_pump_events(serv->loop, 0);

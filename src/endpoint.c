@@ -94,7 +94,7 @@ endpoint_write_result endpoint_write(endpoint* conn, int fd)
     if (num_written == -1)
     {
         hhlog(HHLOG_LEVEL_WARNING,
-              "Error writing to endpoint. fd: %d, error: %s", fd,
+              "closing, error writing to endpoint. fd: %d, error: %s", fd,
               strerror(errno));
         deactivate_conn(conn);
         return ENDPOINT_WRITE_ERROR;
@@ -110,6 +110,7 @@ endpoint_write_result endpoint_write(endpoint* conn, int fd)
              * if we just sent a close message and we've received one already
              * the websocket connection is fully closed and we're done
              */
+            hhlog(HHLOG_LEVEL_DEBUG, "closing, close sent. fd: %d", fd);
             deactivate_conn(conn);
             return ENDPOINT_WRITE_CLOSED;
         }
@@ -219,6 +220,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
 
                 if (conn->close_sent)
                 {
+                    hhlog(HHLOG_LEVEL_DEBUG,"closing, close received");
                     deactivate_conn(conn);
                     return PARSE_CLOSE;
                 }
@@ -303,11 +305,12 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
          */
         return ENDPOINT_READ_SUCCESS;
     case PROTOCOL_HANDSHAKE_FAIL:
-        hhlog(HHLOG_LEVEL_DEBUG, "Read invalid handshake. fd: %d", fd);
+        hhlog(HHLOG_LEVEL_DEBUG,"closing, read invalid handshake. fd: %d",fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     case PROTOCOL_HANDSHAKE_FAIL_TOO_LARGE:
-        hhlog(HHLOG_LEVEL_DEBUG, "Read too large handshake. fd: %d", fd);
+        hhlog(HHLOG_LEVEL_DEBUG, "closing, read too large handshake. fd: %d",
+              fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     default:
@@ -321,9 +324,9 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
      * subprotocols/extensions
      */
     if (conn->callbacks->on_open != NULL &&
-        !conn->callbacks->on_open(conn, &conn->pconn, conn->userdata)
-    )
+        !conn->callbacks->on_open(conn, &conn->pconn, conn->userdata))
     {
+        hhlog(HHLOG_LEVEL_DEBUG,"closing, on_open returned false. fd: %d",fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_CLOSED;
     }
@@ -354,14 +357,15 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
     if (num_read == -1)
     {
         hhlog(HHLOG_LEVEL_WARNING,
-                  "Error reading from endpoint. fd: %d, error: %s",
-                  fd, strerror(errno));
+              "closing, error reading from endpoint. fd: %d, error: %s",
+              fd, strerror(errno));
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     }
     else if (num_read == 0)
     {
-        hhlog(HHLOG_LEVEL_INFO, "Endpoint closed connection. fd: %d", fd);
+        hhlog(HHLOG_LEVEL_DEBUG, "closing, endpoint closed connection. fd: %d",
+              fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_ERROR;
     }
@@ -393,7 +397,7 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
         break;
     case PROTOCOL_STATE_WRITE_HANDSHAKE:
         hhlog(HHLOG_LEVEL_WARNING,
-                  "tried to read when we were writing handshake: %d", fd);
+              "closing, tried to read when we were writing handshake: %d", fd);
         deactivate_conn(conn);
         r = ENDPOINT_READ_ERROR;
         break;
@@ -578,6 +582,8 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
     {
     case PROTOCOL_STATE_READ_HANDSHAKE:
     case PROTOCOL_STATE_WRITE_HANDSHAKE:
+        hhlog(HHLOG_LEVEL_DEBUG,
+              "closing, endpoint_close when in handshake: %p",conn);
         deactivate_conn(conn);
         return r;
 

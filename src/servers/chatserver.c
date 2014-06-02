@@ -583,6 +583,17 @@ static void on_connect(server_conn* conn, void* userdata)
     hhlog(HHLOG_LEVEL_DEBUG, "Got connect (conn: %p)", conn);
 }
 
+static void on_pong(server_conn* conn_info, char* payload,
+                    int payload_len, void* userdata)
+{
+    hhunused(conn_info);
+    hhunused(payload);
+    hhunused(payload_len);
+    hhunused(userdata);
+
+    hhlog(HHLOG_LEVEL_DEBUG, "Got pong: \"%.*s\"", payload_len, payload);
+}
+
 static void
 on_close(server_conn* conn, int code, const char* reason, int reason_len,
          void* userdata)
@@ -672,18 +683,28 @@ int main(int argc, char** argv)
     sigaction(SIGTERM, &act, NULL);
     sigaction(SIGINT, &act, NULL);
 
-    config_server_options options;
-    options.bindaddr = NULL;
-    options.max_clients = MAX_CLIENTS;
+    config_server_options options =
+    {
+        .bindaddr = NULL,
+        .max_clients = MAX_CLIENTS,
+        .heartbeat_interval_ms = 10000,
+        .heartbeat_ttl_ms = 2000,
+        .handshake_timeout_ms = 3000,
 
-    options.endp_settings.protocol_buf_init_len = 1 * 1024;
+        .endp_settings =
+        {
+            .protocol_buf_init_len = 1 * 1024,
+            .conn_settings =
+            {
+                .write_max_frame_size = 16 * 1024,
+                .read_max_msg_size = MAX_MESSAGE_SIZE,
+                .read_max_num_frames = 1024,
+                .max_handshake_size = 2048,
+                .rand_func = NULL
+            }
+        }
+    };
 
-    protocol_settings* conn_settings = &options.endp_settings.conn_settings;
-    conn_settings->write_max_frame_size = 16 * 1024;
-    conn_settings->read_max_msg_size = MAX_MESSAGE_SIZE;
-    conn_settings->read_max_num_frames = 1024;
-    conn_settings->max_handshake_size = 2048;
-    conn_settings->rand_func = NULL;
     options.port = (uint16_t)atoi(argv[1]);
 
     server_callbacks callbacks =
@@ -692,7 +713,7 @@ int main(int argc, char** argv)
         .on_message = on_message_received,
         .on_connect = on_connect,
         .on_ping = NULL,
-        .on_pong = NULL,
+        .on_pong = on_pong,
         .on_close = on_close
     };
 

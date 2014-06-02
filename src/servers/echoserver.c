@@ -148,18 +148,28 @@ int main(int argc, char** argv)
     sigaction(SIGTERM, &act, NULL);
     sigaction(SIGINT, &act, NULL);
 
-    config_server_options options;
-    options.bindaddr = NULL;
-    options.max_clients = 150;
+    config_server_options options =
+    {
+        .bindaddr = NULL,
+        .max_clients = 150,
+        .heartbeat_interval_ms = 0,
+        .heartbeat_ttl_ms = 0,
+        .handshake_timeout_ms = 0,
 
-    options.endp_settings.protocol_buf_init_len = 4 * 1024;
+        .endp_settings =
+        {
+            .protocol_buf_init_len = 4 * 1024,
+            .conn_settings =
+            {
+                .write_max_frame_size = 20 * 1024 * 1024,
+                .read_max_msg_size = 20 * 1024 * 1024,
+                .read_max_num_frames = 20 * 1024 * 1024,
+                .max_handshake_size = 2048,
+                .rand_func = NULL
+            }
+        }
+    };
 
-    protocol_settings* conn_settings = &options.endp_settings.conn_settings;
-    conn_settings->write_max_frame_size = 20 * 1024 * 1024;
-    conn_settings->read_max_msg_size = 20 * 1024 * 1024;
-    conn_settings->read_max_num_frames = 20 * 1024 * 1024;
-    conn_settings->max_handshake_size = 2048;
-    conn_settings->rand_func = NULL;
     options.port = (uint16_t)atoi(argv[1]);
 
     server_callbacks callbacks =

@@ -68,6 +68,11 @@ event_time_id   event_add_time_event(event_loop* loop,
                                      event_time_callback* callback,
                                      uint64_t frequency_ms,
                                      void* data);
+event_time_id   event_add_time_event_with_delay(event_loop* loop,
+                                     event_time_callback* callback,
+                                     uint64_t frequency_ms,
+                                     uint64_t initial_delay_ms,
+                                     void* data);
 void            event_delete_time_event(event_loop* loop, event_time_id id);
 void            event_destroy_loop(event_loop* loop);
 

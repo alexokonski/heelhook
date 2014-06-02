@@ -36,10 +36,33 @@
 
 typedef struct
 {
-    char* bindaddr; /* addr to bind to, if NULL, all interfaces */
-    uint16_t port; /* port the server will listen on */
-    endpoint_settings endp_settings; /* endpoint settings */
-    int max_clients; /* max clients we allow connected */
+    /* addr to bind to, if NULL, all interfaces */
+    char* bindaddr;
+
+    /* port the server will listen on */
+    uint16_t port;
+
+    /* set to 0 for none */
+    uint64_t heartbeat_interval_ms;
+
+    /*
+     * how long to wait for a heartbeat response. if this is 0 , but
+     * heartbeat_interval_ms is not 0, heartbeats will be pong frames
+     * and won't be checked for acks
+     */
+    uint64_t heartbeat_ttl_ms;
+
+    /*
+     * will close the socket if a handshake takes longer than this (slowloris
+     * attack mitigation). set to 0 for none
+     */
+    uint64_t handshake_timeout_ms;
+
+    /* endpoint settings */
+    endpoint_settings endp_settings;
+
+    /* max clients we allow connected */
+    int max_clients;
 } config_server_options;
 
 typedef struct

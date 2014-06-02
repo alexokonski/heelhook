@@ -106,6 +106,16 @@
         }\
     } while (0)
 
+/* move an existing node to the back of a list */
+#define INLIST_MOVE_BACK(list, n, next, prev, head, tail) \
+    INLIST_REMOVE(list, n, next, prev, head, tail);\
+    INLIST_APPEND(list, n, next, prev, head, tail);
+
+/* safe to delete curr */
 #define INLIST_FOREACH(list, type, curr, next, prev, head, tail) \
-    for (type* curr = list->head; curr != NULL; curr = curr->next)
+    for (type* curr = list->head,\
+            *next_node = (curr == NULL ? NULL : curr->next);\
+         curr != NULL;\
+         curr = next_node,\
+            next_node = (next_node == NULL ? NULL : next_node->next))
 
