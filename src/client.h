@@ -37,14 +37,6 @@
 
 typedef enum
 {
-    CLIENT_STATE_CONNECTING,
-    CLIENT_STATE_WRITE_HANDSHAKE,
-    CLIENT_STATE_READ_HANDSHAKE,
-    CLIENT_STATE_CONNECTED
-} client_state;
-
-typedef enum
-{
     CLIENT_WRITE_CONTINUE,
     CLIENT_WRITE_DONE,
     CLIENT_WRITE_ERROR,
@@ -110,7 +102,6 @@ typedef struct
 struct client
 {
     int fd;
-    client_state state;
     endpoint endp;
     client_callbacks* cbs;
     void* userdata;
@@ -135,9 +126,6 @@ void client_disconnect(client* c);
 
 /* get the file descriptor for this client */
 int client_fd(client* c);
-
-/* get the current state of this client */
-client_state client_get_state(client* c);
 
 /* queue up a message to send on this connection */
 client_result client_send_msg(client* c, endpoint_msg* msg);

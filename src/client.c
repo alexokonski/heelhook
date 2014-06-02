@@ -189,7 +189,6 @@ client_connect_raw(client* c, config_client_options* opt,
 
     c->fd = s;
     c->cbs = cbs;
-    c->state = CLIENT_STATE_CONNECTING;
     c->userdata = userdata;
     int r = endpoint_init(&c->endp, ENDPOINT_CLIENT, &opt->endp_settings,
                           &g_client_cbs, c);
@@ -226,12 +225,6 @@ void client_disconnect(client* c)
 int client_fd(client* c)
 {
     return c->fd;
-}
-
-/* get the current state of this client */
-client_state client_get_state(client* c)
-{
-    return c->state;
 }
 
 /* queue up a message to send on this connection */
