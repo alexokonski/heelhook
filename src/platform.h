@@ -39,3 +39,7 @@
 #if _POSIX_TIMERS > 0 && defined(_POSIX_MONOTONIC_CLOCK) && _POSIX_C_SOURCE >= 199309
     #define HAVE_MONOTONIC_CLOCK
 #endif
+
+#ifdef __GNUC__
+    #define HAVE_ALIGNOF
+#endif

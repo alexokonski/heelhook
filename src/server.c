@@ -127,6 +127,8 @@ static int init_conn(server_conn* conn, server* serv)
 {
     conn->serv = serv;
     conn->userdata = NULL;
+    conn->timeout_next = NULL;
+    conn->timeout_prev = NULL;
     int r = endpoint_init(&conn->endp, ENDPOINT_SERVER,
                           &serv->options.endp_settings, &g_server_cbs, conn);
 

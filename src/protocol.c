@@ -37,6 +37,7 @@
 #include "util.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -53,9 +54,13 @@ typedef enum
 #define HEADER_KEY "Sec-WebSocket-Key"
 #define KEY_LEN 16
 #define BASE64_MAX_OUTPUT_LEN(n) ((4 * (((n) + 3) / 3)) + 1)
+#define MASK_KEY_LEN 4
 
 static const char g_header_template[] = "%s: %s\r\n";
 #define HEADER_TEMPLATE_LEN 5 /* colon,<space>\r,\n,null  */
+
+/* must be an UNSIGNED type where sizeof() is a power of 2 */
+typedef uint32_t big_type; /* used for faster masking */
 
 static int is_valid_opcode(protocol_opcode opcode)
 {
@@ -149,7 +154,28 @@ static int get_num_extra_len_bytes(int64_t payload_len)
 }
 
 /*
+ * License for utf-8 decoding functions:
+ *
  * Copyright (c) 2008-2009 Bjoern Hoehrmann <bjoern@hoehrmann.de>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to
+ * deal in the Software without restriction, including without limitation the
+ * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ * sell copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
+ *
  * See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
  */
 
@@ -199,55 +225,236 @@ static bool is_valid_utf8(const char* str, int64_t length)
     return state == UTF8_ACCEPT;
 }
 
-static void mask_data(char* data, size_t len, char* mask_key,
-                      int64_t mask_index, bool validate_utf8, uint32_t* state,
-                      uint32_t* codepoint)
+static HH_INLINE void
+mask_data(char* data, size_t len, char* mask_key,
+          int64_t mask_index, bool validate_utf8, uint32_t* state,
+          uint32_t* codepoint)
 {
     uint8_t* d = (uint8_t*)data;
+    const bool should_mask = (mask_key != NULL);
 
-    for (size_t i = 0; i < len; i++)
+    /*
+     * if we don't need to mask, and don't need to validate, this function is
+     * done
+     */
+    if (!should_mask && !validate_utf8)
     {
-        if (mask_key != NULL)
+        return;
+    }
+
+#define MASK_BYTES(bytes, n)\
+    for (size_t i = 0; i < (n); i++)\
+    {\
+        *bytes++ ^= mask_key[mask_index++ % 4];\
+    }
+
+#define VALIDATE_BYTES(bytes, n)\
+    for (size_t i = 0; i < (n); i++)\
+    {\
+        utf8_decode(state, codepoint, *bytes++);\
+        if (*state == UTF8_REJECT) return;\
+    }
+
+#define MASK_VALIDATE_BYTES(bytes, n)\
+    for (size_t i = 0; i < (n); i++)\
+    {\
+        *bytes++ ^= mask_key[mask_index++ % 4];\
+        utf8_decode(state, codepoint, *(bytes-1));\
+        if (*state == UTF8_REJECT) return;\
+    }
+
+    if (!validate_utf8 && should_mask && len > (sizeof(size_t) * 2) &&
+        sizeof(size_t) >= MASK_KEY_LEN &&
+        sizeof(size_t) % MASK_KEY_LEN == 0)
+    {
+        big_type big_mask_key;
+
+        for (size_t i = 0; i < sizeof(big_type) / MASK_KEY_LEN; i++)
         {
-            d[i] ^= mask_key[mask_index++ % 4];
+            char* addr = (char*)&big_mask_key + i * MASK_KEY_LEN;
+            memcpy(addr, mask_key, MASK_KEY_LEN);
         }
+
+        /* get an aligned addressed so we can mask in chunks of size_t */
+        big_type* big_d = hhalignup(d, hhalignof(big_type));
+
+        /* mask by single bytes up to the aligned address */
+        size_t pre_size = (uintptr_t)big_d - (uintptr_t)d;
+        MASK_BYTES(d, pre_size);
+
+        const size_t sz = sizeof(big_type);
+        const size_t bits_sz = CHAR_BIT * sz;
+
+        /* need to right rotate big_mask_key by the mask offset */
+        big_type big_d_mod = (mask_index % MASK_KEY_LEN) * CHAR_BIT;
+        big_mask_key =
+             (big_mask_key << big_d_mod) |
+             (big_mask_key >> (bits_sz - big_d_mod));
+
+        /* mask by chunks of size_t */
+        size_t big_len = (len - pre_size) / sz;
+        for (size_t i = 0; i < big_len; i++)
+        {
+            *big_d++ ^= big_mask_key;
+        }
+
+        mask_index += big_len * sz;
+        d += big_len * sz;
+
+        size_t post_size = len - (big_len * sz + pre_size);
+        MASK_BYTES(d, post_size);
+    }
+    else
+    {
         if (validate_utf8)
         {
-            utf8_decode(state, codepoint, d[i]);
-            if (*state == UTF8_REJECT) return;
+            if (should_mask)
+            {
+                MASK_VALIDATE_BYTES(d, len);
+            }
+            else
+            {
+                VALIDATE_BYTES(d, len);
+            }
+        }
+        else
+        {
+            hhassert(should_mask);
+            MASK_BYTES(d, len);
         }
     }
+#undef MASK_BYTES
+#undef VALIDATE_BYTES
+#undef MASK_VALIDATE_BYTES
 }
 
-static void mask_and_move_data(char* dest, char* src, size_t len,
-                               char* mask_key_ptr, int64_t mask_index,
-                               bool validate_utf8, uint32_t* state,
-                               uint32_t* codepoint)
+static HH_INLINE void
+mask_and_move_data(char* dest, char* src, size_t len,
+                   char* mask_key_ptr, int64_t mask_index,
+                   bool validate_utf8, uint32_t* state,
+                   uint32_t* codepoint)
 {
+    uint8_t* d = (uint8_t*)dest;
+    const bool should_mask = (mask_key_ptr != NULL);
+
     /*
      * the move we're about to do might overwrite the data at
      * mask_key_ptr... copy the key into another place
      */
-    char mask_key[4];
-    if(mask_key_ptr != NULL)
+    char mask_key[MASK_KEY_LEN];
+    if (should_mask)
     {
         memcpy(mask_key, mask_key_ptr, sizeof(mask_key));
     }
 
-    uint8_t* d = (uint8_t*)dest;
-    for (size_t i = 0; i < len; i++)
+#define COPY_VALIDATE_BYTES(dest, src, n)\
+    for (size_t i = 0; i < (n); i++)\
+    {\
+        *dest++ = (uint8_t)(*src++);\
+        utf8_decode(state, codepoint, *(dest-1));\
+        if (*state == UTF8_REJECT) return;\
+    }
+
+#define COPY_MASK_BYTES(dest, src, n)\
+    for (size_t i = 0; i < (n); i++)\
+    {\
+        *dest++ = (uint8_t)(*src++) ^ mask_key[mask_index++ % MASK_KEY_LEN];\
+    }
+
+#define COPY_MASK_VALIDATE_BYTES(dest, src, n)\
+    for (size_t i = 0; i < (n); i++)\
+    {\
+        *dest++ = (uint8_t)(*src++) ^ mask_key[mask_index++ % MASK_KEY_LEN];\
+        utf8_decode(state, codepoint, *(dest-1));\
+        if (*state == UTF8_REJECT) return;\
+    }
+
+    if (!validate_utf8 && should_mask &&len > (sizeof(size_t) * 2) &&
+        sizeof(size_t) >= MASK_KEY_LEN &&
+        sizeof(size_t) % MASK_KEY_LEN == 0)
     {
-        d[i] = (uint8_t)src[i];
-        if (mask_key_ptr != NULL)
+        /* get an aligned addresses so we can mask in chunks of size_t */
+        big_type* big_d = hhalignup(d, hhalignof(big_type));
+        big_type* big_s = hhalignup(src, hhalignof(big_type));
+
+        /* mask by single bytes up to the aligned address */
+        size_t dest_pre_size = (uintptr_t)big_d - (uintptr_t)d;
+        size_t src_pre_size = (uintptr_t)big_s - (uintptr_t)src;
+
+        /*
+         * if the aligned ptrs aren't same number of bytes from src and dest,
+         * we can't copy by big chunks... :(. So just do a normal byte-by-byte
+         * and exit
+         */
+        if (dest_pre_size != src_pre_size)
         {
-            d[i] ^= mask_key[mask_index++ % 4];
+            COPY_MASK_BYTES(d, src, len);
+            return;
+        } /* else... */
+
+        /*
+         * we can do part of of this copy with big chunks. let's do it.
+         */
+
+        /* first, copy single bytes until both src and dest are aligned */
+        COPY_MASK_BYTES(d, src, dest_pre_size);
+
+        big_type big_mask_key;
+        const size_t sz = sizeof(big_type);
+        const size_t bits_sz = CHAR_BIT * sz;
+
+        /* need to right rotate big_mask_key by the mask offset */
+        big_type big_d_mod = (mask_index % MASK_KEY_LEN) * CHAR_BIT;
+        big_mask_key =
+             (big_mask_key << big_d_mod) |
+             (big_mask_key >> (bits_sz - big_d_mod));
+
+        for (size_t i = 0; i < sizeof(big_type) / MASK_KEY_LEN; i++)
+        {
+            char* addr = (char*)&big_mask_key + i * MASK_KEY_LEN;
+            memcpy(addr, mask_key, MASK_KEY_LEN);
         }
+
+        /* mask by chunks of size_t */
+        size_t big_len = (len - src_pre_size) / sz;
+        for (size_t i = 0; i < big_len; i++)
+        {
+            *big_d++ = *big_s++ ^ big_mask_key;
+        }
+
+        mask_index += big_len * sz;
+        d += big_len * sz;
+        src += big_len * sz;
+
+        size_t post_size = len - (big_len * sz + src_pre_size);
+        COPY_MASK_BYTES(d, src, post_size);
+    }
+    else
+    {
         if (validate_utf8)
         {
-            utf8_decode(state, codepoint, d[i]);
-            if (*state == UTF8_REJECT) return;
+            if (should_mask)
+            {
+                COPY_MASK_VALIDATE_BYTES(d, src, len);
+            }
+            else
+            {
+                COPY_VALIDATE_BYTES(d, src, len);
+            }
+        }
+        else
+        {
+            if (should_mask)
+            {
+                COPY_MASK_BYTES(d, src, len);
+            }
+            else
+            {
+                memcpy(d, src, len);
+            }
         }
     }
+#undef MOVE_BYTES
 }
 
 static int is_comma_delimited_header(const char* header)
@@ -608,8 +815,8 @@ protocol_parse_frame_hdr(protocol_conn* conn, bool expect_mask,
         msg->msg_len + payload_len > read_max_msg_size)
 
     {
-        handle_violation(conn, HH_ERROR_LARGE_MESSAGE, "client sent message"
-                         "that was too large");
+        handle_violation(conn, HH_ERROR_LARGE_MESSAGE,
+                         "client sent message that was too large");
         return PROTOCOL_RESULT_FAIL;
     }
 
@@ -1720,3 +1927,34 @@ bool protocol_is_control(protocol_msg_type msg_type)
     }
 }
 
+#if 0
+
+static void usage(const char* name)
+{
+    printf("Usage: %s size_to_mask_and_move\n", name);
+}
+
+int main(int argc, char** argv)
+{
+    if (argc != 2)
+    {
+        usage(argv[0]);
+        exit(1);
+    }
+
+    int x;
+    int size = atoi(argv[1]);
+    char* from_buf = malloc(size);
+    from_buf[0] = 'h';
+    char* to_buf = malloc(size);
+    to_buf[0] = 'i';
+    char mask_key[4];
+
+    mask_and_move_data(to_buf, from_buf, (size_t)size, mask_key, 0, false,
+                       NULL, NULL);
+    x = to_buf[0];
+    printf("dumb: %d\n", x);
+    return 0;
+}
+
+#endif

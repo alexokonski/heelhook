@@ -28,8 +28,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __UTIL_H_
-#define __UTIL_H_
+#ifndef UTIL_H__
+#define UTIL_H__
+
+#include "platform.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -56,5 +58,14 @@ uint64_t hh_ntohll(uint64_t netlonglong);
 #else
     #define HH_INLINE inline
 #endif
+
+#ifdef HAVE_ALIGNOF
+    #define hhalignof(type) __alignof__(type)
+#else
+    #define hhalignof(type) offsetof(struct { char c; type member; }, member)
+#endif
+
+#define hhalignup(ptr, align) \
+    ((void *)((uintptr_t)ptr + (align - ((uintptr_t)ptr & (align - 1)))))
 
 #endif /* __UTIL_H_ */

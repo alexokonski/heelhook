@@ -29,6 +29,7 @@
  */
 
 #include "../protocol.h"
+#include "../hhassert.h"
 #include "../util.h"
 
 #include <stdio.h>
@@ -261,6 +262,41 @@ static void test_frame_write(
     }
 }
 
+static void verify_long_msg(protocol_msg* msg, protocol_result r,
+                            int64_t payload_len, const char* msg_name,
+                            protocol_conn* conn)
+{
+    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
+    {
+        printf("NON-SUCCESS LONG MSG %s RESULT: %d MSG: %.*s\n",
+               msg_name, r, (int)conn->error_len, conn->error_msg);
+        exit(1);
+    }
+
+    if (msg->type != PROTOCOL_MSG_BINARY)
+    {
+        printf("LONG MSG %s TYPE MISMATCH: %d\n", msg_name, msg->type);
+        exit(1);
+    }
+
+    if (msg->msg_len != payload_len)
+    {
+        printf("LONG MSG %s LEN MISMATCH: %" PRId64 "\n", msg_name,
+               msg->msg_len);
+        exit(1);
+    }
+
+    for (unsigned i = 0; i < msg->msg_len; i++)
+    {
+        if ((unsigned char)msg->data[i] != 0xfe)
+        {
+            printf("LONG MSG %s INVALID BYTE '%c' (ord: %d) AT POS: %u\n",
+                   msg_name, msg->data[65535], (int)msg->data[65535], i);
+            exit(1);
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     hhunused(argc);
@@ -292,7 +328,7 @@ int main(int argc, char** argv)
 
     protocol_settings settings;
     settings.write_max_frame_size = 1024;
-    settings.read_max_msg_size = 65537;
+    settings.read_max_msg_size = 65537 * 2;
     settings.read_max_num_frames = 1024;
     settings.max_handshake_size = 2048;
     settings.rand_func = test_random;
@@ -441,25 +477,49 @@ int main(int argc, char** argv)
 
     darray_clear(conn->read_buffer);
 
-    const unsigned char header[] =
+    static const unsigned char single_header[] =
     {
         0x82, 0xff, /* fin bit, opcode, extended len */
         0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /* extended len */
-        0x37, 0xfa, 0x21, 0x3d /* masking key */
+        0x87, 0x8a, 0x81, 0x8d /* masking key */
     };
-    const int payload_len = 65536;
-    int total_len = sizeof(header) + payload_len;
-
-    char* data = darray_ensure(&conn->read_buffer, total_len);
-    memcpy(data, header, sizeof(header));
-
-    const unsigned char* masking_key = &header[sizeof(header) - 4];
-    data += sizeof(header);
-
-    for (int i = 0; i < payload_len; i++)
+    static const unsigned char frag_header1[] =
     {
-        *data = '*' ^ masking_key[i % 4];
-        data++;
+        0x02, 0xff, /* fin bit, opcode, extended len */
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /* extended len */
+        0x87, 0x8b, 0x81, 0x8d /* masking key */
+    };
+    static const unsigned char frag_header2[] =
+    {
+        0x80, 0xff, /* fin bit, opcode, extended len */
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, /* extended len */
+        0x87, 0x85, 0x81, 0x8d /* masking key */
+    };
+
+    static const unsigned char* frags[] =
+            { single_header, frag_header1, frag_header2 };
+
+    const int payload_len = 65536;
+    size_t header_len = sizeof(single_header);
+    hhassert(sizeof(single_header) == sizeof(frag_header1));
+    hhassert(sizeof(frag_header1) == sizeof(frag_header2));
+    int total_len = sizeof(single_header) + sizeof(frag_header1) +
+                    sizeof(frag_header2) + payload_len * 3;
+
+    unsigned char* data = darray_ensure(&conn->read_buffer, total_len);
+    for (unsigned i = 0; i < hhcountof(frags); i++)
+    {
+        const unsigned char* header = frags[i];
+        memcpy(data, header, header_len);
+
+        const unsigned char* masking_key = &header[header_len - 4];
+        data += header_len;
+
+        for (int i = 0; i < payload_len; i++)
+        {
+            *data = 0xfe ^ masking_key[i % 4];
+            data++;
+        }
     }
 
     darray_add_len(conn->read_buffer, total_len);
@@ -468,29 +528,20 @@ int main(int argc, char** argv)
     pos = 0;
     r = protocol_read_client_msg(conn, &pos, &msg);
 
-    if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
+    verify_long_msg(&msg, r, payload_len, "SINGLE LONG MSG", conn);
+
+    memset(&msg, 0, sizeof(msg));
+    r = protocol_read_client_msg(conn, &pos, &msg);
+
+    if (r != PROTOCOL_RESULT_FRAME_FINISHED)
     {
-        printf("NON-SUCCESS LONG MSG FRAG: %d\n", r);
+        printf("NON-FRAME FINISHED LONG MSG FRAG: %d\n", r);
         exit(1);
     }
 
-    if (msg.type != PROTOCOL_MSG_BINARY)
-    {
-        printf("LONG MSG TYPE MISMATCH: %d\n", msg.type);
-        exit(1);
-    }
+    r = protocol_read_client_msg(conn, &pos, &msg);
 
-    if (msg.msg_len != 65536)
-    {
-        printf("LONG MSG LEN MISMATCH: %" PRId64 "\n", msg.msg_len);
-        exit(1);
-    }
-
-    if (msg.data[65535] != '*')
-    {
-        printf("LONG MSG INVALID LAST BYTE: %c\n", msg.data[65535]);
-        exit(1);
-    }
+    verify_long_msg(&msg, r, payload_len * 2, "FRAGMENTED LONG MSG", conn);
 
     test_frame_write(false, conn, "TEST_SERVER_WRITE");
     test_frame_write(true, conn, "TEST_CLIENT_WRITE");

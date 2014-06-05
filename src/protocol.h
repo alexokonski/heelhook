@@ -347,7 +347,11 @@ const char* protocol_get_extension(protocol_conn* conn, unsigned index);
  * protocol_result is PROTOCOL_RESULT_MESSAGE_FINISHED.  Otherwise, it is
  * untouched.  The data pointer in read_msg will be a pointer into
  * conn->read_buffer, and as such will NOT be valid after any changes to
- * conn->read_buffer
+ * conn->read_buffer.
+ *
+ * If there are multiple frames on read_buffer, will return
+ * PROTOCOL_RESULT_FRAME_FINISHED for every frame without the fin bit set,
+ * then finally with PROTOCOL_RESULT_MESSAGE_FINISHED for the last frame
  */
 protocol_result
 protocol_read_client_msg(protocol_conn* conn, size_t* start_pos,

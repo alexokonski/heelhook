@@ -56,6 +56,9 @@ echoserver: echoserver.o $(HEELHOOK_OBJECTS)
 chatserver: chatserver.o cJSON.o $(HEELHOOK_OBJECTS)
 	$(TEST_CC) -lm
 
+time_proto: darray.o protocol.o error_code.o hhmemory.o util.o sha1.o cencode.o
+	$(TEST_CC)
+
 include Makefile.dep
 
 %.o: %.c
@@ -75,4 +78,5 @@ clean:
 	rm -f test_util
 	rm -f test_pqueue
 	rm -f test_client
+	rm -f time_proto
 
