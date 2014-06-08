@@ -127,6 +127,10 @@ static int init_conn(server_conn* conn, server* serv)
 {
     conn->serv = serv;
     conn->userdata = NULL;
+    conn->timeout_next = NULL;
+    conn->timeout_prev = NULL;
+    conn->prev = NULL;
+    conn->next = NULL;
     int r = endpoint_init(&conn->endp, ENDPOINT_SERVER,
                           &serv->options.endp_settings, &g_server_cbs, conn);
 
@@ -527,12 +531,12 @@ server* server_create(config_server_options* options,
     for (i = 0; i < max_clients; i++)
     {
         server_conn* conn = &serv->connections[i];
-        INLIST_APPEND(serv, conn,  next, prev, free_head, free_tail);
         if (init_conn(conn, serv) < 0)
         {
             i++; /* need to do this so loop in err_create works correctly */
             goto err_create;
         }
+        INLIST_APPEND(serv, conn,  next, prev, free_head, free_tail);
     }
 
     return serv;
