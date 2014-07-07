@@ -230,6 +230,7 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                     pr = PARSE_CONTINUE_WROTE_DATA;
                     conn->close_send_pending = true;
                     conn->close_received = true;
+                    hhlog(HHLOG_LEVEL_DEBUG, "close received");
                 }
                 break;
             case PROTOCOL_MSG_PING:
