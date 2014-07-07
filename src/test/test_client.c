@@ -73,6 +73,7 @@ typedef union
 static const char* g_addr = NULL;
 static int g_port = 0;
 static int g_mps = 0;
+static char* g_body = NULL;
 
 static void usage(char* exec_name)
 {
@@ -94,8 +95,14 @@ static void usage(char* exec_name)
 "    (default:off)\n"
 "-m <one_client_mps>, --mps_bench <one_client_mps>\n"
 "    Simple 'message per second' benchmark, sends <one_client_mps> * num\n"
-"    messages per second. one_client_mps must be greater than 0 and less than\n"
+"    messages per second. If a message body is not specified, will send PING\n"
+"    messages, otherwise, it will send the specified message body as a TEXT\n"
+"    message (see --message-body). one_client_mps must be greater than 0 and\n"
+"    less than\n"
 "    or equal to 1000 (default:on with one_client_mps=10)\n"
+"-b <string>, --message-body <string>\n"
+"    When in message per second benchmark mode, send <string> as the message\n"
+"    payload.\n"
 "-n, --num\n"
 "    When in autobahn mode, run this many test cases against the fuzzing\n"
 "    server. When not in autobahn mode, the number of concurrent client\n"
@@ -157,8 +164,22 @@ static void mps_write_time_proc(event_loop* loop, event_time_id id,
     hhunused(id);
 
     client* c = data;
-    char msg [] = "{param: 'pong'}";
-    client_result r = client_send_ping(c, msg, (int)(sizeof(msg) - 1));
+
+    client_result r;
+    if (g_body == NULL)
+    {
+        char msg [] = "{param: 'pong'}";
+        r = client_send_ping(c, msg, (int)(sizeof(msg) - 1));
+    }
+    else
+    {
+        endpoint_msg msg;
+        msg.is_text = true;
+        msg.data = g_body;
+        msg.msg_len = strlen(g_body);
+        r = client_send_msg(c, &msg);
+    }
+
     if (r != CLIENT_RESULT_SUCCESS)
     {
         hhlog(HHLOG_LEVEL_ERROR, "could not send client message: %d",
@@ -372,13 +393,20 @@ static bool ab_on_connect(client* c, void* userdata)
     return true;
 }
 
+static void mps_on_message(client* c, endpoint_msg* msg, void* userdata)
+{
+    hhunused(userdata);
+    hhlog(HHLOG_LEVEL_DEBUG, "%p got message: \"%.*s\"", c, (int)msg->msg_len,
+          msg->data);
+}
+
 static void ab_on_message(client* c, endpoint_msg* msg, void* userdata)
 {
     event_loop* loop = userdata;
-    /*hhlog(HHLOG_LEVEL_DEBUG, "got message: \"%.*s\"", (int)msg->msg_len,
-              msg->data);
+    hhlog(HHLOG_LEVEL_DEBUG, "%p got message: \"%.*s\"", c, (int)msg->msg_len,
+          msg->data);
 
-    char data[64];
+    /*char data[64];
     int len = snprintf(data, sizeof(data), "client %d says bye-bye",
                        client_fd(c));
 
@@ -422,8 +450,8 @@ static void mps_on_pong(client* c, char* payload, int payload_len,
     hhunused(payload);
     hhunused(payload_len);
     hhunused(userdata);
-    /*hhlog(HHLOG_LEVEL_DEBUG, "client %d got pong: %.*s", client_fd(c),
-          payload_len, payload);*/
+    hhlog(HHLOG_LEVEL_DEBUG, "client %d got pong: %.*s", client_fd(c),
+          payload_len, payload);
 }
 
 static int convert_to_int(const char* str, char* exec_name)
@@ -630,7 +658,7 @@ static void do_mps_test(const char* addr, int port, int num)
 
     client_callbacks cbs;
     cbs.on_connect = NULL;
-    cbs.on_message = NULL;
+    cbs.on_message = mps_on_message;
     cbs.on_ping = NULL;
     cbs.on_pong = mps_on_pong;
     cbs.on_close = mps_on_close;
@@ -682,21 +710,22 @@ int main(int argc, char** argv)
 
     static struct option long_options[] =
     {
-        { "debug"     , no_argument      , NULL, 'd'},
-        { "addr"      , required_argument, NULL, 'a'},
-        { "port"      , required_argument, NULL, 'p'},
-        { "autobahn"  , no_argument      , NULL, 'u'},
-        { "chatserver", no_argument      , NULL, 'c'},
-        { "mps_bench" , required_argument, NULL, 'm'},
-        { "num"       , required_argument, NULL, 'n'},
-        { NULL        , 0                , NULL,  0 }
+        { "debug"       , no_argument      , NULL, 'd'},
+        { "addr"        , required_argument, NULL, 'a'},
+        { "port"        , required_argument, NULL, 'p'},
+        { "autobahn"    , no_argument      , NULL, 'u'},
+        { "chatserver"  , no_argument      , NULL, 'c'},
+        { "mps_bench"   , required_argument, NULL, 'm'},
+        { "num"         , required_argument, NULL, 'n'},
+        { "message-body", required_argument, NULL, 'b'},
+        { NULL          , 0                , NULL,  0 }
     };
 
     bool error_occurred = false;
     while (1)
     {
         int option_index = 0;
-        int c = getopt_long(argc, argv, "ucda:p:n:m:", long_options,
+        int c = getopt_long(argc, argv, "ucda:p:n:m:b:", long_options,
                             &option_index);
         if (c == -1)
         {
@@ -731,6 +760,10 @@ int main(int argc, char** argv)
 
         case 'm':
             mps_str = optarg;
+            break;
+
+        case 'b':
+            g_body = optarg;
             break;
 
         case '?':
