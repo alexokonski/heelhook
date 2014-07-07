@@ -57,7 +57,7 @@
 
 static hhlog_options g_log_options =
 {
-    .loglevel = HHLOG_LEVEL_DEBUG,
+    .loglevel = HHLOG_LEVEL_INFO,
     .syslogident = NULL,
     .logfilepath = NULL,
     .log_to_stdout = true,
