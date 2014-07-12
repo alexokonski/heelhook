@@ -56,6 +56,8 @@ static void on_message_received(server_conn* conn, endpoint_msg* msg,
                                 void* userdata)
 {
     hhunused(userdata);
+    /*hhlog(HHLOG_LEVEL_DEBUG, "%p got message: \"%.*s\"", conn,
+          (int)msg->msg_len, msg->data);*/
     server_conn_send_msg(conn, msg);
 }
 

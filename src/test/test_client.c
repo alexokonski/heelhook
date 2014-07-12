@@ -84,6 +84,8 @@ static void usage(char* exec_name)
 "    Ip address to connect to as a client (default: localhost)\n"
 "-p, --port\n"
 "    Port to connect to as a client (default: 8080)\n"
+"r, --resource\n"
+"    Resource to request from the server (default: \"/\")\n"
 "-d, --debug\n"
 "    Set logging to debug level (default: off)\n"
 "-u, --autobahn\n"
@@ -645,7 +647,8 @@ static void do_autobahn_test(const char* addr, int port, int num)
 
 }
 
-static void do_mps_test(const char* addr, int port, int num)
+static void do_mps_test(const char* addr, const char* resource, int port,
+                        int num)
 {
     config_client_options options;
     options.endp_settings.protocol_buf_init_len = 4 * 1024;
@@ -677,9 +680,13 @@ static void do_mps_test(const char* addr, int port, int num)
         client* c = &clients[i];
         client_result cr;
         event_result er;
-        cr = client_connect_raw(c, &options, &cbs, addr, port, "/",
-                               "localhost:9001", NULL, NULL, extra_headers,
-                               loop);
+        char host[1024];
+        snprintf(host, sizeof(host), "%s:%d", addr, port);
+
+
+        cr = client_connect_raw(c, &options, &cbs, addr, port, resource,
+                                host, NULL, NULL, extra_headers,
+                                loop);
         if (cr != CLIENT_RESULT_SUCCESS)
         {
             hhlog(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
@@ -704,6 +711,7 @@ int main(int argc, char** argv)
     const char* port_str = "8080";
     const char* num_str = "1";
     const char* mps_str = "10";
+    const char* resource = "/";
     bool autobahn_mode = false;
     bool chatserver_mode = false;
     bool debug = false;
@@ -713,6 +721,7 @@ int main(int argc, char** argv)
         { "debug"       , no_argument      , NULL, 'd'},
         { "addr"        , required_argument, NULL, 'a'},
         { "port"        , required_argument, NULL, 'p'},
+        { "resource"    , required_argument, NULL, 'r'},
         { "autobahn"    , no_argument      , NULL, 'u'},
         { "chatserver"  , no_argument      , NULL, 'c'},
         { "mps_bench"   , required_argument, NULL, 'm'},
@@ -725,7 +734,7 @@ int main(int argc, char** argv)
     while (1)
     {
         int option_index = 0;
-        int c = getopt_long(argc, argv, "ucda:p:n:m:b:", long_options,
+        int c = getopt_long(argc, argv, "ucda:p:n:m:b:r:", long_options,
                             &option_index);
         if (c == -1)
         {
@@ -764,6 +773,10 @@ int main(int argc, char** argv)
 
         case 'b':
             g_body = optarg;
+            break;
+
+        case 'r':
+            resource = optarg;
             break;
 
         case '?':
@@ -824,7 +837,7 @@ int main(int argc, char** argv)
     }
     else
     {
-        do_mps_test(addr, port, num);
+        do_mps_test(addr, resource, port, num);
     }
 
     exit(0);
