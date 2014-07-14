@@ -1083,7 +1083,7 @@ protocol_write_handshake_request(
 
     /* -4 for %s */
     size_t http_line_size =
-        sizeof(http_line) - 2 + strlen(resource) + strlen(host);
+        sizeof(http_line) - 4 + strlen(resource) + strlen(host);
     char* buf = darray_ensure(&conn->write_buffer, (unsigned)http_line_size);
 
     int total_written = 0;
