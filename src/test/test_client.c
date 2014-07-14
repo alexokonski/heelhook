@@ -74,6 +74,7 @@ static const char* g_addr = NULL;
 static int g_port = 0;
 static int g_mps = 0;
 static char* g_body = NULL;
+static unsigned int g_sleep_ms = 0;
 
 static void usage(char* exec_name)
 {
@@ -84,7 +85,7 @@ static void usage(char* exec_name)
 "    Ip address to connect to as a client (default: localhost)\n"
 "-p, --port\n"
 "    Port to connect to as a client (default: 8080)\n"
-"r, --resource\n"
+"-r, --resource\n"
 "    Resource to request from the server (default: \"/\")\n"
 "-d, --debug\n"
 "    Set logging to debug level (default: off)\n"
@@ -109,7 +110,10 @@ static void usage(char* exec_name)
 "    When in autobahn mode, run this many test cases against the fuzzing\n"
 "    server. When not in autobahn mode, the number of concurrent client\n"
 "    connections to make for stress/load testing of a websocket server\n"
-"    (default: 1)\n",
+"    (default: 1)\n"
+"-s <ms>, --rampup-sleep <ms>\n"
+"    When in 'message per second' mode, the amount to wait before creating\n"
+"    each new client connection\n",
      exec_name);
 }
 
@@ -296,7 +300,7 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
                             test_client_read, c);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d, fd: %d", er, client_fd(c));
         exit(1);
     }
     queue_write(c, loop);
@@ -340,7 +344,7 @@ static void mps_client_connect(event_loop* loop, int fd, void* data)
                             test_client_read, c);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d, fd: %d", er, fd);
         exit(1);
     }
     queue_mps_write(c, loop);
@@ -452,8 +456,8 @@ static void mps_on_pong(client* c, char* payload, int payload_len,
     hhunused(payload);
     hhunused(payload_len);
     hhunused(userdata);
-    hhlog(HHLOG_LEVEL_DEBUG, "client %d got pong: %.*s", client_fd(c),
-          payload_len, payload);
+    /*hhlog(HHLOG_LEVEL_DEBUG, "client %d got pong: %.*s", client_fd(c),
+          payload_len, payload);*/
 }
 
 static int convert_to_int(const char* str, char* exec_name)
@@ -513,7 +517,7 @@ static int random_socket_connect(const char* ip_addr, int port,
                             random_client_connect, NULL);
     if (er != EVENT_RESULT_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d, fd: %d", er, s);
         exit(1);
     }
     return 0;
@@ -615,7 +619,7 @@ static void do_autobahn_test(const char* addr, int port, int num)
     client c;
     for (int i = 0; i < num; i++)
     {
-        event_loop* loop = event_create_loop(1 + 1024);
+        event_loop* loop = event_create_loop(num + 1024);
         client_result cr;
         char resource[64];
         snprintf(resource, sizeof(resource),
@@ -636,7 +640,8 @@ static void do_autobahn_test(const char* addr, int port, int num)
                                 test_client_connect, &c);
         if (er != EVENT_RESULT_SUCCESS)
         {
-            hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
+            hhlog(HHLOG_LEVEL_ERROR, "event fail: %d, fd: %d", er,
+                  client_fd(&c));
             exit(1);
         }
 
@@ -645,6 +650,63 @@ static void do_autobahn_test(const char* addr, int port, int num)
         event_destroy_loop(loop);
     }
 
+}
+
+static void
+connect_mps_client(client* c, config_client_options* options,
+                   client_callbacks* cbs, const char* addr, int port,
+                   const char* resource, const char* host,
+                   const char** extra_headers,event_loop* loop)
+{
+    client_result cr;
+    event_result er;
+
+    cr = client_connect_raw(c, options, cbs, addr, port, resource,
+                            host, NULL, NULL, extra_headers,
+                            loop);
+    if (cr != CLIENT_RESULT_SUCCESS)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
+        exit(1);
+    }
+    er = event_add_io_event(loop, client_fd(c), EVENT_WRITEABLE,
+                            mps_client_connect, c);
+    if (er != EVENT_RESULT_SUCCESS)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "event fail: %d, fd: %d", er, client_fd(c));
+        exit(1);
+    }
+}
+
+typedef struct
+{
+    config_client_options* options;
+    client_callbacks* cbs;
+    const char* addr;
+    const char* host;
+    const char* resource;
+    int port;
+    int num;
+    const char** extra_headers;
+    client* clients;
+    int num_connected;
+} mps_info;
+
+static void mps_connect_proc(event_loop* loop, event_time_id id, void* data)
+{
+    mps_info* info = data;
+    client* c = &info->clients[info->num_connected];
+
+    /* connect a client */
+    connect_mps_client(c, info->options, info->cbs, info->addr, info->port,
+                       info->resource, info->host, info->extra_headers, loop);
+    info->num_connected++;
+
+    /* if this was the last client, we're done */
+    if (info->num == info->num_connected)
+    {
+        event_delete_time_event(loop, id);
+    }
 }
 
 static void do_mps_test(const char* addr, const char* resource, int port,
@@ -674,35 +736,47 @@ static void do_mps_test(const char* addr, const char* resource, int port,
 
     client* clients = hhmalloc((size_t)num * sizeof(*clients));
     event_loop* loop = event_create_loop(num + 1024);
+    char host[1024];
+    snprintf(host, sizeof(host), "%s:%d", addr, port);
+    mps_info info;
 
-    for (int i = 0; i < num; i++)
+    if (g_sleep_ms == 0)
     {
-        client* c = &clients[i];
-        client_result cr;
-        event_result er;
-        char host[1024];
-        snprintf(host, sizeof(host), "%s:%d", addr, port);
-
-
-        cr = client_connect_raw(c, &options, &cbs, addr, port, resource,
-                                host, NULL, NULL, extra_headers,
-                                loop);
-        if (cr != CLIENT_RESULT_SUCCESS)
+        /*
+         * if no sleep is specified, just connect all clients as fast as
+         * possible
+         */
+        for (int i = 0; i < num; i++)
         {
-            hhlog(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
-            exit(1);
+            client* c = &clients[i];
+            connect_mps_client(c, &options, &cbs, addr, port, resource, host,
+                               extra_headers, loop);
         }
-        er = event_add_io_event(loop, client_fd(c), EVENT_WRITEABLE,
-                                mps_client_connect, c);
-        if (er != EVENT_RESULT_SUCCESS)
-        {
-            hhlog(HHLOG_LEVEL_ERROR, "event fail: %d", er);
-            exit(1);
-        }
+    }
+    else
+    {
+        /*
+         * defer all client connecting to mps_connect_proc, which will be
+         * called every g_sleep_ms
+         */
+        info.options = &options;
+        info.cbs = &cbs;
+        info.addr = addr;
+        info.host = host;
+        info.port = port;
+        info.resource = resource;
+        info.host = host;
+        info.num = num;
+        info.extra_headers = extra_headers;
+        info.clients = clients;
+        info.num_connected = 0;
+
+        event_add_time_event(loop, mps_connect_proc, g_sleep_ms, &info);
     }
 
     event_pump_events(loop, 0);
     event_destroy_loop(loop);
+    hhfree(clients);
 }
 
 int main(int argc, char** argv)
@@ -712,6 +786,7 @@ int main(int argc, char** argv)
     const char* num_str = "1";
     const char* mps_str = "10";
     const char* resource = "/";
+    const char* sleep_str = "0";
     bool autobahn_mode = false;
     bool chatserver_mode = false;
     bool debug = false;
@@ -727,6 +802,7 @@ int main(int argc, char** argv)
         { "mps_bench"   , required_argument, NULL, 'm'},
         { "num"         , required_argument, NULL, 'n'},
         { "message-body", required_argument, NULL, 'b'},
+        { "rampup-sleep", required_argument, NULL, 's'},
         { NULL          , 0                , NULL,  0 }
     };
 
@@ -734,7 +810,7 @@ int main(int argc, char** argv)
     while (1)
     {
         int option_index = 0;
-        int c = getopt_long(argc, argv, "ucda:p:n:m:b:r:", long_options,
+        int c = getopt_long(argc, argv, "ucda:p:n:m:b:r:s:", long_options,
                             &option_index);
         if (c == -1)
         {
@@ -779,6 +855,10 @@ int main(int argc, char** argv)
             resource = optarg;
             break;
 
+        case 's':
+            sleep_str = optarg;
+            break;
+
         case '?':
         default:
             error_occurred = true;
@@ -803,7 +883,8 @@ int main(int argc, char** argv)
     int port = convert_to_int(port_str, argv[0]);
     int num = convert_to_int(num_str, argv[0]);
     int mps = convert_to_int(mps_str, argv[0]);
-    if (mps < 0 || mps > 1000)
+    int sleep_ms = convert_to_int(sleep_str, argv[0]);
+    if (mps < 0 || mps > 1000 || sleep_ms < 0)
     {
         usage(argv[0]);
         exit(1);
@@ -812,6 +893,7 @@ int main(int argc, char** argv)
     g_port = port;
     g_addr = addr;
     g_mps = mps;
+    g_sleep_ms = sleep_ms;
 
     if (debug)
     {

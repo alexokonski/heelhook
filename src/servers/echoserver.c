@@ -153,7 +153,7 @@ int main(int argc, char** argv)
     config_server_options options =
     {
         .bindaddr = NULL,
-        .max_clients = 150,
+        .max_clients = 1000,
         .heartbeat_interval_ms = 0,
         .heartbeat_ttl_ms = 0,
         .handshake_timeout_ms = 0,
