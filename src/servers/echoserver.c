@@ -83,7 +83,7 @@ static void on_ping(server_conn* conn_info, char* payload,
 }
 
 static bool
-on_open(server_conn* conn, int* subprotocol_out, int* extensions_out,
+on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
         void* userdata)
 {
     hhunused(subprotocol_out);
@@ -176,8 +176,8 @@ int main(int argc, char** argv)
 
     server_callbacks callbacks =
     {
-        .on_open = on_open,
-        .on_connect = NULL,
+        .on_connect = on_connect,
+        .on_open = NULL,
         .on_message = on_message_received,
         .on_ping = on_ping,
         .on_close = on_close

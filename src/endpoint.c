@@ -324,10 +324,10 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
      * allow users of this interface to reject or pick
      * subprotocols/extensions
      */
-    if (conn->callbacks->on_open != NULL &&
-        !conn->callbacks->on_open(conn, &conn->pconn, conn->userdata))
+    if (conn->callbacks->on_connect != NULL &&
+        !conn->callbacks->on_connect(conn, &conn->pconn, conn->userdata))
     {
-        hhlog(HHLOG_LEVEL_DEBUG,"closing, on_open returned false. fd: %d",fd);
+        hhlog(HHLOG_LEVEL_DEBUG,"closing, on_connect returned false. fd: %d",fd);
         deactivate_conn(conn);
         return ENDPOINT_READ_CLOSED;
     }

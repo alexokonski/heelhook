@@ -39,7 +39,7 @@
 typedef struct server server;
 typedef struct server_conn server_conn;
 
-/* on_open is called when a client has sent their side of the handshake, but
+/* on_connect is called when a client has sent their side of the handshake, but
  * the server has not yet responded
  *
  * return false if you want to reject this client
@@ -53,13 +53,13 @@ typedef struct server_conn server_conn;
  *        length equal to server_get_num_extensions. Fill in starting from
  *        index 0. Set all to -1 or don't write to this to choose 0 extensions
  */
-typedef bool (server_on_open)(server_conn* conn, int* subprotocol_out,
+typedef bool (server_on_connect)(server_conn* conn, int* subprotocol_out,
                               int* extensions_out, void* userdata);
 /*
- * on_connect is called right after the server has sent its opening handshake
+ * on_open is called right after the server has sent its opening handshake
  * and it's now okay to send and receive normal websocket messages
  */
-typedef void (server_on_connect)(server_conn* conn, void* userdata);
+typedef void (server_on_open)(server_conn* conn, void* userdata);
 
 /* on_message is called when the client sends the server a message */
 typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg,

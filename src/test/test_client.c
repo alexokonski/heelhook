@@ -380,7 +380,7 @@ static void write_random_bytes(event_loop* loop, int fd, void* data)
     queue_random_write(fd, loop);
 }
 
-static bool ab_on_connect(client* c, void* userdata)
+static bool ab_on_open(client* c, void* userdata)
 {
     hhunused(userdata);
     /*event_loop* loop = userdata;*/
@@ -535,7 +535,7 @@ static void do_chatserver_test(const char* addr, int port, int num)
     conn_settings->rand_func = random_callback;
 
     /*client_callbacks chatty_cbs;
-    chatty_cbs.on_connect = cs_chatty_on_connect;
+    chatty_cbs.on_open = cs_chatty_on_open;
     chatty_cbs.on_message = cs_chatty_on_message;
     chatty_cbs.on_ping = NULL;
     chatty_cbs.on_close = cs_chatty_on_close;
@@ -605,7 +605,7 @@ static void do_autobahn_test(const char* addr, int port, int num)
     conn_settings->rand_func = random_callback;
 
     client_callbacks callbacks;
-    callbacks.on_connect = ab_on_connect;
+    callbacks.on_open = ab_on_open;
     callbacks.on_message = ab_on_message;
     callbacks.on_ping = NULL;
     callbacks.on_close = ab_on_close;
@@ -722,7 +722,7 @@ static void do_mps_test(const char* addr, const char* resource, int port,
     conn_settings->rand_func = random_callback;
 
     client_callbacks cbs;
-    cbs.on_connect = NULL;
+    cbs.on_open = NULL;
     cbs.on_message = mps_on_message;
     cbs.on_ping = NULL;
     cbs.on_pong = mps_on_pong;

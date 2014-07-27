@@ -43,16 +43,22 @@
 #include <string.h>
 
 static bool
-client_on_open_callback(endpoint* conn_info,
+client_on_connect_callback(endpoint* conn_info,
                         protocol_conn* proto_conn, void* userdata)
 {
     hhunused(conn_info);
     hhunused(proto_conn);
 
+    /*
+     * for clients endpoints, the on_connect callback is called right after the
+     * handshake is complete. Because of that, the client interface exposes
+     * this as 'on_open' rather than 'on_connect', to make things more
+     * consistent with the server interface.
+     */
     client* c = userdata;
-    if (c->cbs->on_connect != NULL)
+    if (c->cbs->on_open != NULL)
     {
-        return c->cbs->on_connect(c, c->userdata);
+        return c->cbs->on_open(c, c->userdata);
     }
 
     return true;
@@ -115,7 +121,7 @@ static void client_on_close_callback(endpoint* conn_info, int code,
 
 static endpoint_callbacks g_client_cbs =
 {
-    .on_open = client_on_open_callback,
+    .on_connect = client_on_connect_callback,
     .on_message = client_on_message_callback,
     .on_ping = client_on_ping_callback,
     .on_pong = client_on_pong_callback,

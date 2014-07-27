@@ -540,7 +540,7 @@ cleanup:
 }
 
 static bool
-on_open(server_conn* conn, int* subprotocol_out, int* extensions_out,
+on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
         void* userdata)
 {
     hhunused(extensions_out);
@@ -565,7 +565,7 @@ on_open(server_conn* conn, int* subprotocol_out, int* extensions_out,
     return found;
 }
 
-static void on_connect(server_conn* conn, void* userdata)
+static void on_open(server_conn* conn, void* userdata)
 {
     all_data* data = userdata;
 

@@ -93,8 +93,8 @@ typedef struct
     int64_t msg_len;
 } endpoint_msg;
 
-typedef bool (endpoint_on_open)(endpoint* conn, protocol_conn* proto_conn,
-                                  void* userdata);
+typedef bool (endpoint_on_connect)(endpoint* conn, protocol_conn* proto_conn,
+                                   void* userdata);
 typedef void (endpoint_on_message)(endpoint* conn, endpoint_msg* msg,
                                    void* userdata);
 typedef void (endpoint_on_ping)(endpoint* conn_info, char* payload,
@@ -122,7 +122,7 @@ struct endpoint_callbacks
      *
      * for clients, called when the server has sent the handshake response 
      */
-    endpoint_on_open* on_open;
+    endpoint_on_connect* on_connect;
 
     /* called when a full message is received from a client */
     endpoint_on_message* on_message;

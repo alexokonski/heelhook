@@ -98,7 +98,7 @@ struct server
 
 static void write_to_client_callback(event_loop* loop, int fd, void* data);
 
-static bool server_on_open_callback(endpoint* conn, protocol_conn* proto_conn,
+static bool server_on_connect_callback(endpoint* conn, protocol_conn* proto_conn,
                                     void* userdata);
 
 static void server_on_message_callback(endpoint* conn, endpoint_msg* msg,
@@ -116,7 +116,7 @@ static void server_on_close_callback(endpoint* conn_info, int code,
 
 static endpoint_callbacks g_server_cbs =
 {
-    .on_open = server_on_open_callback,
+    .on_connect = server_on_connect_callback,
     .on_message = server_on_message_callback,
     .on_ping = server_on_ping_callback,
     .on_pong = server_on_pong_callback,
@@ -304,7 +304,7 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
 }
 
 static bool
-server_on_open_callback(endpoint* conn_info,
+server_on_connect_callback(endpoint* conn_info,
                         protocol_conn* proto_conn, void* userdata)
 {
     hhunused(conn_info);
@@ -332,8 +332,8 @@ server_on_open_callback(endpoint* conn_info,
      * allow users of this interface to reject or pick
      * subprotocols/extensions
      */
-    if (serv->cbs.on_open != NULL &&
-        !serv->cbs.on_open(conn, &subprotocol_out, extensions_out,
+    if (serv->cbs.on_connect != NULL &&
+        !serv->cbs.on_connect(conn, &subprotocol_out, extensions_out,
                            serv->userdata))
     {
         goto reject_client;
@@ -388,9 +388,9 @@ server_on_open_callback(endpoint* conn_info,
         goto reject_client;
     }
 
-    if (serv->cbs.on_connect != NULL)
+    if (serv->cbs.on_open != NULL)
     {
-        serv->cbs.on_connect(conn, serv->userdata);
+        serv->cbs.on_open(conn, serv->userdata);
     }
 
     INLIST_REMOVE(serv, conn, timeout_next, timeout_prev, handshake_head,
