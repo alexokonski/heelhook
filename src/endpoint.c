@@ -577,6 +577,7 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
     size_t data_len = 0;
     char* orig_data = NULL;
     char* data = NULL;
+    char dummy = '\0';
     endpoint_result r = ENDPOINT_RESULT_SUCCESS;
 
     switch (conn->pconn.state)
@@ -590,15 +591,24 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
 
     case PROTOCOL_STATE_CONNECTED:
         hhassert(reason_len >= 0);
-        data_len = sizeof(code) + (size_t)reason_len;
-        orig_data = hhmalloc(data_len);
-        data = orig_data;
-        code = hh_htons(code);
-        memcpy(data, &code, sizeof(code));
-        data += sizeof(code);
 
-        /* purposely leave out terminator */
-        memcpy(data, reason, (size_t)reason_len);
+        if (reason != NULL)
+        {
+            data_len = sizeof(code) + (size_t)reason_len;
+            orig_data = hhmalloc(data_len);
+            data = orig_data;
+            code = hh_htons(code);
+            memcpy(data, &code, sizeof(code));
+            data += sizeof(code);
+
+            /* purposely leave out terminator */
+            memcpy(data, reason, (size_t)reason_len);
+        }
+        else
+        {
+            orig_data = &dummy;
+            data_len = 0;
+        }
 
         msg.type = PROTOCOL_MSG_CLOSE;
         msg.data = orig_data;
@@ -606,7 +616,10 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
         r = endpoint_send_pmsg(conn, &msg);
         conn->close_send_pending = true;
 
-        hhfree(orig_data);
+        if (reason != NULL)
+        {
+            hhfree(orig_data);
+        }
         break;
     }
 
