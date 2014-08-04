@@ -1,4 +1,4 @@
-STD= -std=c99 -pedantic
+STD= -std=c99 -pedantic -fpic
 WARN= -Wall -Wextra -Werror
 OPT?= -O2
 DEBUG= -g -ggdb
@@ -10,22 +10,29 @@ FINAL_CFLAGS= $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(EXT_SYMBOL) $(CFLAGS)
 FINAL_LDFLAGS= $(LDFLAGS) -g -ggdb
 TEST_LIBS= -pthread
 ENDPOINT_OBJECTS= hhmemory.o darray.o protocol.o sha1.o cencode.o util.o error_code.o endpoint.o hhlog.o
-HEELHOOK_OBJECTS= $(ENDPOINT_OBJECTS) event.o server.o pqueue.o
+HEELHOOK_OBJECTS= $(ENDPOINT_OBJECTS) event.o server.o pqueue.o client.o
 TEST_CC= $(CC) $(TEST_LIBS) -o $@ $^
+SHARED_SONAME=libheelhook.so.1
+SHARED_REALNAME=libheelhook.so.1.0
+
 
 .PHONY: all
-all: heelhook echoserver chatserver test_client test
+all: heelhook echoserver chatserver test_client test heelhook_static heelhook_shared
 
 .PHONY: debug
-debug: 
-	$(MAKE) OPT=-O0 EXT_SYMBOL="-DDEBUG"
-
-.PHONY:test_debug
-test_debug:
-	$(MAKE) test OPT=-O0 EXT_SYMBOL="-DDEBUG"
-
+debug: OPT=-O0
+debug: EXT_SYMBOL="-DDEBUG"
+debug: all
 
 heelhook: $(HEELHOOK_OBJECTS)
+
+heelhook_static: heelhook libheelhook.a
+
+libheelhook.a:
+	ar rvcs libheelhook.a $(HEELHOOK_OBJECTS)
+
+heelhook_shared: heelhook
+	$(CC) -shared -Wl,-soname,$(SHARED_SONAME) -o $(SHARED_REALNAME) $(HEELHOOK_OBJECTS)
 
 .PHONY: test
 test: test_event test_darray test_protocol test_util test_pqueue
@@ -75,4 +82,6 @@ clean:
 	rm -f test_util
 	rm -f test_pqueue
 	rm -f test_client
+	rm -f $(SHARED_REALNAME)
+	rm -f libheelhook.a
 
