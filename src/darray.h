@@ -34,6 +34,7 @@
 #define __DARRAY_H_
 
 #include <stdlib.h>
+#include <unistd.h>
 
 typedef struct darray darray;
 
