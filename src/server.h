@@ -82,6 +82,12 @@ typedef void (server_on_close)(server_conn* conn_info, int code,
                                const char* reason, int reason_len,
                                void* userdata);
 
+/*
+ * should_stop will be called periodically, if you return 'true', the server
+ * will stop itself (identical to calling server_stop)
+ */
+typedef bool (server_should_stop)(server* serv, void* userdata);
+
 typedef enum
 {
     SERVER_RESULT_SUCCESS,
@@ -96,6 +102,7 @@ typedef struct
     server_on_ping* on_ping;
     server_on_pong* on_pong;
     server_on_close* on_close;
+    server_should_stop* should_stop;
 } server_callbacks;
 
 /*

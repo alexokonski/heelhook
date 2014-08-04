@@ -612,6 +612,13 @@ static void server_teardown(server* serv)
 static void stop_watchdog(event_loop* loop, event_time_id id, void* data)
 {
     server* serv = data;
+
+    if (serv->cbs.should_stop != NULL &&
+        serv->cbs.should_stop(serv, serv->userdata))
+    {
+        serv->stopping = true;
+    }
+
     if (serv->stopping)
     {
         /* we aren't needed any more */
