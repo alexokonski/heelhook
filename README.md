@@ -28,7 +28,10 @@ To build the python extension and run the example echoserver:
     python setup.py build
     PYTHONPATH=./build/lib.linux-x86_64-2.7/ python examples/echoserver.py 9001
 
-There is documentation supported
+There are docstrings available for everything, for ex. by doing the standard:
+
+    >>> import heelhook
+    >>> help(heelhook)
 
 Platforms
 =========
