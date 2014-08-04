@@ -37,10 +37,13 @@
 typedef struct
 {
     /* addr to bind to, if NULL, all interfaces */
-    char* bindaddr;
+    const char* bindaddr;
 
     /* port the server will listen on */
     uint16_t port;
+
+    /* max clients we allow connected */
+    int max_clients;
 
     /* set to 0 for none */
     uint64_t heartbeat_interval_ms;
@@ -60,9 +63,6 @@ typedef struct
 
     /* endpoint settings */
     endpoint_settings endp_settings;
-
-    /* max clients we allow connected */
-    int max_clients;
 } config_server_options;
 
 typedef struct
