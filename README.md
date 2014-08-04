@@ -16,7 +16,30 @@ In another terminal, assuming your fuzzingclient.json is setup accordingly:
 
     wstest -m fuzzingclient -s fuzzingclient.json
 
-Should compile on any recent linux, but only tested on Ubuntu 12.04.
+Should compile on any recent linux, but only tested on 64-bit Ubuntu 12.04
+and 14.04
+
+Python Extension
+================
+To build the python extension and run the example echoserver:
+
+    git clone https://github.com/alexokonski/heelhook.git
+    cd heelook/python
+    python setup.py build
+    PYTHONPATH=./build/lib.linux-x86_64-2.7/ python examples/echoserver.py 9001
+
+There is documentation supported
+
+Platforms
+=========
+In theory, heelhook should build on any POSIX conforming system with standard
+BSD socket functions. However, in practice, the only known supported platforms
+are:
+
+    Ubuntu 14.04 LTS
+    Ubuntu 12.04 LTS
+
+Compilers tested are gcc and clang.
 
 Notes
 =====
