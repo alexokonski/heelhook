@@ -5,7 +5,10 @@ client_num = 0
 
 class EchoConnection(ServerConn):
     def on_connect(self):
+        global client_num
         self.num = client_num
+        client_num += 1
+
         print self.num, "Got subprotocols:", self.get_sub_protocols()
 
     def on_message(self, msg, is_text):
