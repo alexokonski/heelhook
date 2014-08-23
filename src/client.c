@@ -170,6 +170,7 @@ client_connect_raw(client* c, config_client_options* opt,
     {
         hhlog(HHLOG_LEVEL_ERROR, "fcntl failed on socket: %s",
               strerror(errno));
+        close(s);
         return CLIENT_RESULT_FAIL;
     }
 
@@ -190,6 +191,7 @@ client_connect_raw(client* c, config_client_options* opt,
     {
         hhlog(HHLOG_LEVEL_ERROR, "connect failed on socket: %s",
               strerror(errno));
+        close(s);
         return CLIENT_RESULT_FAIL;
     }
 
@@ -202,6 +204,7 @@ client_connect_raw(client* c, config_client_options* opt,
     {
         hhlog(HHLOG_LEVEL_ERROR, "endpoint_init failed: %s",
               strerror(errno));
+        close(s);
         return CLIENT_RESULT_FAIL;
     }
 
@@ -214,6 +217,7 @@ client_connect_raw(client* c, config_client_options* opt,
         hhlog(HHLOG_LEVEL_ERROR,
               "endpoint failed to write handshake result: %d, socket: %d",
               er, s);
+        close(s);
         return CLIENT_RESULT_FAIL;
     }
 
