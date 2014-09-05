@@ -105,3 +105,16 @@ PyDoc_STRVAR(ServerConn_get_sub_protocols__doc__,
 PyDoc_STRVAR(ServerConn_get_extensions__doc__,
 "get_extensions(self)\n\n"
 "Get the list of extensions the client says they support");
+
+PyDoc_STRVAR(ServerConn_get_headers__doc__,
+"get_headers(self)\n\n"
+"Get all the headers sent by the client. Returns a dictionary that looks like:\n"
+"{\n"
+"   \"Host\": [\"server.example.com\"],\n"
+"   \"Sec-WebSocket-Protocol\": [\"chat\", \"otherchat\"]\n"
+"}");
+
+PyDoc_STRVAR(ServerConn_get_resource__doc__,
+"get_resource(self)\n\n"
+"Get the resource requested by the client.");
+

@@ -151,11 +151,17 @@ ServerConn_send_pong(hh_ServerConnObj* self, PyObject* args, PyObject* kwargs);
 static PyObject*
 ServerConn_send_close(hh_ServerConnObj* self, PyObject* args, PyObject* kwargs);
 static PyObject*
+ServerConn_get_resource(hh_ServerConnObj* self, PyObject* args,
+                        PyObject* kwargs);
+static PyObject*
 ServerConn_get_sub_protocols(hh_ServerConnObj* self, PyObject* args,
-                           PyObject* kwargs);
+                             PyObject* kwargs);
 static PyObject*
 ServerConn_get_extensions(hh_ServerConnObj* self, PyObject* args,
-                           PyObject* kwargs);
+                          PyObject* kwargs);
+static PyObject*
+ServerConn_get_headers(hh_ServerConnObj* self, PyObject* args,
+                       PyObject* kwargs);
 
 static PyMethodDef hh_ServerConnMethods[] =
 {
@@ -189,11 +195,17 @@ static PyMethodDef hh_ServerConnMethods[] =
     { "send_close", (PyCFunction)ServerConn_send_close,
         METH_NOARGS, ServerConn_send_close__doc__ },
 
+    { "get_resource", (PyCFunction)ServerConn_get_resource,
+        METH_NOARGS, ServerConn_get_resource__doc__ },
+
     { "get_sub_protocols", (PyCFunction)ServerConn_get_sub_protocols,
         METH_NOARGS, ServerConn_get_sub_protocols__doc__ },
 
     { "get_extensions", (PyCFunction)ServerConn_get_extensions,
         METH_NOARGS, ServerConn_get_extensions__doc__ },
+
+    { "get_headers", (PyCFunction)ServerConn_get_headers,
+        METH_NOARGS, ServerConn_get_headers__doc__ },
 
     { NULL }  /* Sentinel */
 };
@@ -568,6 +580,25 @@ ServerConn_send_close(hh_ServerConnObj* self, PyObject* args, PyObject* kwargs)
 }
 
 static PyObject*
+ServerConn_get_resource(hh_ServerConnObj* self, PyObject* args,
+                        PyObject* kwargs)
+{
+    if (self->conn == NULL)
+    {
+        PyErr_SetString(PyExc_TypeError, "Object was not created by Server");
+        return NULL;
+    }
+
+    const char* resource = server_get_resource(self->conn);
+    if (resource == NULL)
+    {
+        resource = "";
+    }
+
+    return PyString_FromString(resource);
+}
+
+static PyObject*
 ServerConn_get_sub_protocols(hh_ServerConnObj* self, PyObject* args,
                            PyObject* kwargs)
 {
@@ -580,6 +611,11 @@ ServerConn_get_sub_protocols(hh_ServerConnObj* self, PyObject* args,
     server_conn* conn = self->conn;
     unsigned num_protocols = server_get_num_client_subprotocols(conn);
     PyObject* sub_protocols = PyList_New(num_protocols);
+    if (sub_protocols == NULL)
+    {
+        return NULL;
+    }
+
     for (unsigned i = 0; i < num_protocols; i++)
     {
         PyObject* protocol;
@@ -603,14 +639,87 @@ ServerConn_get_extensions(hh_ServerConnObj* self, PyObject* args,
     server_conn* conn = self->conn;
     unsigned num_extensions = server_get_num_client_extensions(conn);
     PyObject* extensions = PyList_New(num_extensions);
+    if (extensions == NULL)
+    {
+        return NULL;
+    }
+
+    PyObject* ext;
     for (unsigned i = 0; i < num_extensions; i++)
     {
-        PyObject* ext;
-        ext = Py_BuildValue("s", server_get_client_extension(conn, i));
+        ext = PyString_FromString(server_get_client_extension(conn, i));
+        if (ext == NULL)
+        {
+            Py_DECREF(extensions);
+            return NULL;
+        }
         PyList_SET_ITEM(extensions, i, ext);
     }
 
     return extensions;
+}
+
+static PyObject*
+ServerConn_get_headers(hh_ServerConnObj* self, PyObject* args,
+                       PyObject* kwargs)
+{
+    if (self->conn == NULL)
+    {
+        PyErr_SetString(PyExc_TypeError, "Object was not created by Server");
+        return NULL;
+    }
+
+    PyObject* dict = PyDict_New();
+    if (dict == NULL)
+    {
+        return NULL;
+    }
+
+    unsigned num_headers = server_get_num_client_headers(self->conn);
+    const char* name;
+    const darray* values;
+    size_t num_values;
+    PyObject* values_list;
+    PyObject* value_str;
+    int r;
+    for (unsigned i = 0; i < num_headers; i++)
+    {
+        name = server_get_header_name(self->conn, i);
+        values = server_get_header_values(self->conn, i);
+        num_values = darray_get_len(values);
+        values_list = PyList_New(num_values);
+        if (values_list == NULL)
+        {
+            Py_DECREF(dict);
+            return NULL;
+        }
+
+        for (unsigned j = 0; j < num_values; j++)
+        {
+            const char** value = darray_get_elem_addr(values, j);
+            value_str = PyString_FromString(*value);
+            if (value_str == NULL)
+            {
+                Py_DECREF(values_list);
+                Py_DECREF(dict);
+                return NULL;
+            }
+            PyList_SET_ITEM(values_list, j, value_str);
+        }
+
+        r = PyDict_SetItemString(dict, name, values_list);
+        if (r == -1)
+        {
+            Py_DECREF(values_list);
+            Py_DECREF(dict);
+            return NULL;
+        }
+
+        /* dict now owns values_list, we don't need it anymore */
+        Py_DECREF(values_list);
+    }
+
+    return dict;
 }
 
 static bool

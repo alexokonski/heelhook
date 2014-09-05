@@ -9,7 +9,9 @@ class EchoConnection(ServerConn):
         self.num = client_num
         client_num += 1
 
+        print self.num, "Client connected. Resource:", self.get_resource()
         print self.num, "Got subprotocols:", self.get_sub_protocols()
+        print self.num, "All headers:", self.get_headers()
 
     def on_message(self, msg, is_text):
         print self.num, "Got message:", msg
