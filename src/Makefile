@@ -24,17 +24,21 @@ debug: OPT=-O0
 debug: EXT_SYMBOL="-DDEBUG"
 debug: all
 
+.PHONY: heelhook
 heelhook: $(HEELHOOK_OBJECTS)
 
-heelhook_static: heelhook libheelhook.a
+.PHONY: heelhook_static
+heelhook_static: libheelhook.a
 
-libheelhook.a:
+libheelhook.a: $(HEELHOOK_OBJECTS)
 	ar rvcs libheelhook.a $(HEELHOOK_OBJECTS)
 
-heelhook_shared: heelhook
+.PHONY: heelhook_shared
+heelhook_shared: $(SHARED_REALNAME)
+
+$(SHARED_REALNAME): $(HEELHOOK_OBJECTS)
 	$(CC) -shared -Wl,-soname,$(SHARED_SONAME) -o $(SHARED_REALNAME) $(HEELHOOK_OBJECTS)
 
-.PHONY: test
 test: test_event test_darray test_protocol test_util test_pqueue
 	@echo
 	@(bash runtests.sh $^)
