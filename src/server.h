@@ -142,6 +142,21 @@ server_result server_conn_close(server_conn* conn, uint16_t code,
                                 const char* reason, int reason_len);
 
 /*
+ * get the total number of headers the client sent
+ */
+unsigned server_get_num_client_headers(server_conn* conn);
+
+/*
+ * Get the the field name of one of the headers sent by the client
+ */
+const char* server_get_header_name(server_conn* conn, unsigned index);
+
+/*
+ * Get the darray of values (type char*) for a given header index
+ */
+const darray* server_get_header_values(server_conn* conn, unsigned index);
+
+/*
  * get number of subprotocols the client reported they support
  */
 unsigned server_get_num_client_subprotocols(server_conn* conn);
@@ -160,6 +175,11 @@ unsigned server_get_num_client_extensions(server_conn* conn);
  * get an extension the client reported they support
  */
 const char* server_get_client_extension(server_conn* conn, unsigned index);
+
+/*
+ * Get the resource requested by the client
+ */
+const char* server_get_resource(server_conn* conn);
 
 /*
  * stop the server, close all connections. will cause server_listen

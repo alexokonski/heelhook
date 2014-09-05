@@ -127,13 +127,13 @@ void* darray_get_data(darray* array)
 }
 
 /* get the current length of the darray */
-size_t darray_get_len(darray* array)
+size_t darray_get_len(const darray* array)
 {
     return array->len;
 }
 
 /* get the number of additional elements available*/
-size_t darray_get_size_reserved(darray* array)
+size_t darray_get_size_reserved(const darray* array)
 {
     return array->size_reserved;
 }
@@ -237,14 +237,14 @@ void* darray_append(darray** array, const void* data, size_t num_elems)
 }
 
 /* get element by index */
-void* darray_get_elem_addr(darray* array, size_t index)
+void* darray_get_elem_addr(const darray* array, size_t index)
 {
     hhassert(array->len > 0);
-    return (array->data + (array->elem_size * index));
+    return (void*)(array->data + (array->elem_size * index));
 }
 
 /* return the last element of the darray */
-void* darray_get_last_addr(darray* array)
+void* darray_get_last_addr(const darray* array)
 {
     return darray_get_elem_addr(array, array->len - 1);
 }

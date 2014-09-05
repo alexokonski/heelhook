@@ -64,10 +64,10 @@ void darray_destroy(darray* array);
 void* darray_get_data(darray* array);
 
 /* get the current length of the darray */
-size_t darray_get_len(darray* array);
+size_t darray_get_len(const darray* array);
 
 /* get the number of additional elements available*/
-size_t darray_get_size_reserved(darray* array);
+size_t darray_get_size_reserved(const darray* array);
 
 /* clear out the darray - set the len to 0 */
 void darray_clear(darray* array);
@@ -106,10 +106,10 @@ void darray_sub_len(darray* array, size_t num_elems);
 void* darray_append(darray** array, const void* data, size_t num_elems);
 
 /* get element address by index */
-void* darray_get_elem_addr(darray* array, size_t index);
+void* darray_get_elem_addr(const darray* array, size_t index);
 
 /* return the last element address of the darray */
-void* darray_get_last_addr(darray* array);
+void* darray_get_last_addr(const darray* array);
 
 #endif /* __DARRAY_H_ */
 

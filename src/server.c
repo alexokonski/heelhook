@@ -798,6 +798,30 @@ server_result server_conn_close(server_conn* conn, uint16_t code,
 }
 
 /*
+ * get the total number of headers the client sent
+ */
+unsigned server_get_num_client_headers(server_conn* conn)
+{
+    return protocol_get_num_headers(&conn->endp.pconn);
+}
+
+/*
+ * Get the the field name of one of the headers sent by the client
+ */
+const char* server_get_header_name(server_conn* conn, unsigned index)
+{
+    return protocol_get_header_name(&conn->endp.pconn, index);
+}
+
+/*
+ * Get the darray of values (type char*) for a given header index
+ */
+const darray* server_get_header_values(server_conn* conn, unsigned index)
+{
+    return protocol_get_header_values(&conn->endp.pconn, index);
+}
+
+/*
  * get number of subprotocols the client reported they support
  */
 unsigned server_get_num_client_subprotocols(server_conn* conn)
@@ -827,6 +851,14 @@ unsigned server_get_num_client_extensions(server_conn* conn)
 const char* server_get_client_extension(server_conn* conn, unsigned index)
 {
     return protocol_get_extension(&conn->endp.pconn, index);
+}
+
+/*
+ * Get the resource requested by the client
+ */
+const char* server_get_resource(server_conn* conn)
+{
+    return protocol_get_resource(&conn->endp.pconn);
 }
 
 /*

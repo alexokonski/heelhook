@@ -292,7 +292,7 @@ static void test_client_connect(event_loop* loop, int fd, void* data)
     client* c = data;
     if (!check_for_errors(fd, c, loop))
     {
-        return;
+        exit(1);
     }
 
     event_result er;
@@ -336,7 +336,7 @@ static void mps_client_connect(event_loop* loop, int fd, void* data)
     client* c = data;
     if (!check_for_errors(fd, c, loop))
     {
-        return;
+        exit(1);
     }
 
     event_result er;

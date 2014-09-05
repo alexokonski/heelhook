@@ -139,12 +139,12 @@ static uint32_t test_random(protocol_conn* conn)
 static void compare_headers(protocol_conn* conn, const char* test)
 {
     protocol_handshake* info = &conn->info;
-    if (strcmp(info->resource_name, RESOURCE_NAME) != 0)
+    if (strcmp(info->resource, RESOURCE_NAME) != 0)
     {
         printf(
             "%s: FAIL, RESOURCE NAMES DON'T MATCH: %s, %s\n",
             test,
-            info->resource_name,
+            info->resource,
             RESOURCE_NAME
         );
         exit(1);

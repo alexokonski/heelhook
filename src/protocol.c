@@ -326,7 +326,7 @@ static char* parse_http_line(protocol_handshake* info, char* buf,
         end_uri = strchr(buf, ' ');
         if (end_uri == NULL) return NULL;
         *end_uri = '\0'; /* make this a string */
-        info->resource_name = buf;
+        info->resource = buf;
         buf = end_uri + 1;
         buf = parse_http_version(buf, end_buf);
         if (buf == NULL) return NULL;
@@ -670,7 +670,7 @@ int protocol_init_conn(protocol_conn* conn, protocol_settings* settings,
     memset(conn, 0, sizeof(*conn));
     conn->settings = settings;
     conn->state = PROTOCOL_STATE_READ_HANDSHAKE;
-    conn->info.resource_name = NULL;
+    conn->info.resource = NULL;
     conn->info.headers = darray_create(sizeof(protocol_header), 8);
     if (conn->info.headers == NULL) return -1;
     conn->info.buffer = darray_create(sizeof(char), 1024);
@@ -729,7 +729,7 @@ void protocol_reset_conn(protocol_conn* conn)
     conn->frag_msg.msg_len = 0;
     conn->frag_msg.start_pos = 0;
     conn->num_fragments_read = 0;
-    conn->info.resource_name = NULL;
+    conn->info.resource = NULL;
     conn->frame_hdr.payload_len = -1;
     conn->valid_state.state = 0;
     conn->valid_state.codepoint = 0;
@@ -1197,6 +1197,34 @@ void protocol_update_read(protocol_conn* conn, size_t num_read)
 
     darray_add_len((*read_buffer), num_read);
 }
+/*
+ * Get the the field name of one of the headers sent by the client
+ */
+const char* protocol_get_header_name(protocol_conn* conn, unsigned index)
+{
+    hhassert(index < darray_get_len(conn->info.headers));
+    protocol_header* headers = darray_get_data(conn->info.headers);
+    return headers[index].name;
+}
+
+/*
+ * Get the darray of values (type char*) for a given header index
+ */
+const darray* protocol_get_header_values(protocol_conn* conn, unsigned index)
+{
+    hhassert(index < darray_get_len(conn->info.headers));
+    protocol_header* headers = darray_get_data(conn->info.headers);
+    return headers[index].values;
+}
+
+/*
+ * Get the number of headers sent by the client any index less than this
+ * can be used in protocol_get_header_name and protocol_get_header_values
+ */
+unsigned protocol_get_num_headers(protocol_conn* conn)
+{
+    return darray_get_len(conn->info.headers);
+}
 
 /*
  * Get the number of times this header appeared in the request
@@ -1273,6 +1301,14 @@ unsigned protocol_get_num_extensions(protocol_conn* conn)
 const char* protocol_get_extension(protocol_conn* conn, unsigned index)
 {
     return protocol_get_header_value(conn, HEADER_EXTENSION, index);
+}
+
+/*
+ * Helper for getting the resource name sent by the client
+ */
+const char* protocol_get_resource(protocol_conn* conn)
+{
+    return conn->info.resource;
 }
 
 /*

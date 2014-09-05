@@ -134,7 +134,7 @@ typedef struct
 /* info about the connection obtained during the WebSocket handshake */
 typedef struct
 {
-    char* resource_name;
+    char* resource;
     darray* headers; /* array of protocol_header that contains all headers */
     darray* buffer;  /* buffer that contains all headers and resource name */
 } protocol_handshake;
@@ -307,6 +307,22 @@ char* protocol_prepare_read(protocol_conn* conn, size_t ensure_len);
 void protocol_update_read(protocol_conn* conn, size_t num_read);
 
 /*
+ * Get the the field name of one of the headers sent by the client
+ */
+const char* protocol_get_header_name(protocol_conn* conn, unsigned index);
+
+/*
+ * Get the darray of values (type char*) for a given header index
+ */
+const darray* protocol_get_header_values(protocol_conn* conn, unsigned index);
+
+/*
+ * Get the number of headers sent by the client any index less than this
+ * can be used in protocol_get_header_name and protocol_get_header_values
+ */
+unsigned protocol_get_num_headers(protocol_conn* conn);
+
+/*
  * Get the number of times this header appeared in the request
  */
 unsigned protocol_get_num_header_values(protocol_conn* conn, const char* name);
@@ -340,6 +356,11 @@ unsigned protocol_get_num_extensions(protocol_conn* conn);
  * the client
  */
 const char* protocol_get_extension(protocol_conn* conn, unsigned index);
+
+/*
+ * Helper for getting the resource name sent by the client
+ */
+const char* protocol_get_resource(protocol_conn* conn);
 
 /*
  * process a frame sent by a client from the read buffer starting at start_pos
