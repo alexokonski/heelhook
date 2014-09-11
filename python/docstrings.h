@@ -29,14 +29,14 @@ PyDoc_STRVAR(Server__doc__,
 "                         will be closed");
 
 PyDoc_STRVAR(Server_listen__doc__,
-"listen()\n\n"
+"listen(self)\n\n"
 "Block until Server.stop() is called and listen for client connections\n\n"
 "NOTE: During the call, installs signal handlers for SIGTERM and SIGINT that\n"
 "will stop the server when they are handled. Without this, python's default\n"
 "handlers would not be invoked reliably");
 
 PyDoc_STRVAR(Server_stop__doc__,
-"stop()\n\n"
+"stop(self)\n\n"
 "Close all client connections and return from Server.listen()");
 
 PyDoc_STRVAR(ServerConn__doc__,
@@ -46,7 +46,7 @@ PyDoc_STRVAR(ServerConn__doc__,
 "object");
 
 PyDoc_STRVAR(ServerConn_on_connect__doc__,
-"on_connect()\n\n"
+"on_connect(self)\n\n"
 "Called when a client has sent their side of the handshake, but the server has\n"
 "not yet responded\n\n"
 "Depending on what you want to do, you can return the following from this\n"
@@ -112,6 +112,7 @@ PyDoc_STRVAR(ServerConn_get_headers__doc__,
 "{\n"
 "   \"Host\": [\"server.example.com\"],\n"
 "   \"Sec-WebSocket-Protocol\": [\"chat\", \"otherchat\"]\n"
+"   ...\n"
 "}");
 
 PyDoc_STRVAR(ServerConn_get_resource__doc__,
