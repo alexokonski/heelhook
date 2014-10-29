@@ -41,6 +41,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <inttypes.h>
 #include <netinet/in.h>
@@ -884,7 +885,14 @@ server_result server_listen(server* serv)
                   strerror(errno));
         return SERVER_RESULT_FAIL;
     }
-    serv->fd = s;
+
+    if (fcntl(s, F_SETFL, O_NONBLOCK) == -1)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "fcntl failed on socket: %s",
+              strerror(errno));
+        close(s);
+        return SERVER_RESULT_FAIL;
+    }
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -896,6 +904,7 @@ server_result server_listen(server* serv)
     {
         hhlog(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
                   opt->bindaddr);
+        close(s);
         return SERVER_RESULT_FAIL;
     }
 
@@ -903,6 +912,7 @@ server_result server_listen(server* serv)
     {
         hhlog(HHLOG_LEVEL_ERROR, "failed to bind socket: %s",
                   strerror(errno));
+        close(s);
         return SERVER_RESULT_FAIL;
     }
 
@@ -910,8 +920,12 @@ server_result server_listen(server* serv)
     {
         hhlog(HHLOG_LEVEL_ERROR, "failed to listen on socket: %s",
                   strerror(errno));
+        close(s);
         return SERVER_RESULT_FAIL;
     }
+
+    /* socket was set up successfully */
+    serv->fd = s;
 
     event_result r;
     r = event_add_io_event(serv->loop,s,EVENT_READABLE,accept_callback,serv);
@@ -920,6 +934,7 @@ server_result server_listen(server* serv)
     {
         hhlog(HHLOG_LEVEL_ERROR, "error adding accept callback to event"
                   "loop: %d", r);
+        close(s);
         return SERVER_RESULT_FAIL;
     }
 
