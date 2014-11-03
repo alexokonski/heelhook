@@ -86,11 +86,50 @@ static void test_with_data(int* test_data, const int test_data_size)
 {
     pqueue* q = pqueue_create(&test_spec);
 
+    pqueue_elem_ref first = NULL;
+    int first_val = 0;
+    pqueue_elem_ref mid = NULL;
+    int mid_val = 0;
+    pqueue_elem_ref last = NULL;
+    int last_val = 0;
+    pqueue_elem_ref random_ref = NULL;
+    int rand_val = 0;
+
+    int rand_index = 0;
+    while (rand_index == 0 || rand_index == test_data_size / 2 ||
+           rand_index == test_data_size - 1)
+    {
+        rand_index = rand() % test_data_size;
+    }
+
+    pqueue_value val;
     for (int i = 0; i < test_data_size; i++)
     {
-        pqueue_value val;
         val.i_val = test_data[i];
-        pqueue_insert(q, val);
+        if (i == 0)
+        {
+            first_val = test_data[i];
+            first = pqueue_insert(q, val);
+        }
+        else if(i == test_data_size / 2)
+        {
+            mid_val = test_data[i];
+            mid = pqueue_insert(q, val);
+        }
+        else if(i == test_data_size - 1)
+        {
+            last_val = test_data[i];
+            last = pqueue_insert(q, val);
+        }
+        else if(i == rand_index)
+        {
+            rand_val = test_data[i];
+            random_ref = pqueue_insert(q, val);
+        }
+        else
+        {
+            pqueue_insert(q, val);
+        }
     }
 
     pqueue_iterator it;
@@ -99,7 +138,7 @@ static void test_with_data(int* test_data, const int test_data_size)
          pqueue_iter_is_valid(q, &it);
          pqueue_iter_next(q, &it), i++)
     {
-        pqueue_value val = pqueue_iter_get_value(&it);
+        val = pqueue_iter_get_value(&it);
         if (val.i_val != test_data[i])
         {
             printf(
@@ -121,6 +160,24 @@ static void test_with_data(int* test_data, const int test_data_size)
         );
         exit(EXIT_FAILURE);
     }
+
+    /* basic test of delete and insert */
+    pqueue_delete(q, first);
+    pqueue_delete(q, mid);
+    pqueue_delete(q, last);
+    pqueue_delete(q, random_ref);
+
+    val.i_val = first_val;
+    pqueue_insert(q, val);
+
+    val.i_val = mid_val;
+    pqueue_insert(q, val);
+
+    val.i_val = last_val;
+    pqueue_insert(q, val);
+
+    val.i_val = rand_val;
+    pqueue_insert(q, val);
 
     int* orig_data = hhmalloc(test_data_size * sizeof(int));
     memcpy(orig_data, test_data, test_data_size * sizeof(int));
@@ -181,6 +238,11 @@ int main(int argc, char **argv)
     int test_array2[] = {21, 86, 65, 41, 74, 28, 6, 1, 16, 42, 2, 91, 96, 34,
         15, 63, 66, 83, 86};
     test_with_data(test_array2, (const int)hhcountof(test_array2));
+
+    int test_array3[] = {1, 54, 30, 17, 29, 9, 19, 80, 52, 81, 93, 0, 55, 62,
+        8, 73, 35, 89, 35, 87, 0, 0, 4, 26, 90, 73, 55, 30, 56, 36, 36, 10, 90,
+        18, 27, 20, 27, 47, 52, 31, 80, 97, 31, 36, 59, 91, 61, 46, 32, 48 };
+    test_with_data(test_array3, (const int)hhcountof(test_array3));
 
     srand(time(NULL));
     int random_array[TEST_ARRAY_SIZE];

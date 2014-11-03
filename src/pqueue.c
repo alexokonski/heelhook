@@ -88,16 +88,47 @@ static int pq_compare(pqueue* q, pqueue_value a, pqueue_value b)
     return q->spec->cmp(a, b);
 }
 
+#if 0
+static bool heap_validate(pqueue* q)
+{
+    pqueue_elem** heap = darray_get_data(q->heap);
+
+    for(size_t i = 1; i < darray_get_len(q->heap); i++)
+    {
+        int parent = pq_parent(i);
+        if (heap[parent]->heap_index != parent)
+        {
+            printf("INVALID HEAP_INDEX AT %d: %d\n",
+                   (int)parent, heap[parent]->heap_index);
+            return false;
+        }
+
+        if (pq_compare(q, heap[parent]->data, heap[i]->data) < 0)
+        {
+            printf("heap[%d] (%" PRId64 "), parent of heap[%d] (%" PRId64
+                   ") INVALID\n", parent, heap[parent]->data.i_val,
+                   (int)i, heap[i]->data.i_val);
+            return false;
+        }
+    }
+
+    return true;
+}
+#else
+#define heap_validate(q)
+#endif
+
 static void heapify(pqueue* q, int i)
 {
     int largest;
     pqueue_elem** heap = darray_get_data(q->heap);
+    int size = darray_get_len(q->heap);
+
     do
     {
         largest = i;
         int left = pq_left(i);
         int right = pq_right(i);
-        int size = pqueue_get_size(q);
 
         if (left < size &&
             pq_compare(q, heap[left]->data, heap[i]->data) > 0)
@@ -128,17 +159,12 @@ static void heapify(pqueue* q, int i)
     } while (1);
 }
 
-/*
- * you've 'decreased' the 'value' of the element for PQUEUE_SORT_MIN pqueues,
- * or 'increased' the 'value' of the element for PQUEUE_SORT_MAX pqueues,
- * and now you need to re-heapify the pqueue.  The 'generic'
- * implementation of 'HEAP-INCREASE-KEY' found in LCRS
- */
-static void pqueue_resort_element(pqueue* q, pqueue_elem_ref ref)
+static bool pqueue_resort_element(pqueue* q, pqueue_elem_ref ref)
 {
     hhassert(ref->heap_index >= 0);
     int i = ref->heap_index;
     pqueue_elem** heap = darray_get_data(q->heap);
+    bool ret = false;
     while (i > 0 &&
            pq_compare(q, heap[pq_parent(i)]->data, heap[i]->data) < 0)
     {
@@ -148,27 +174,48 @@ static void pqueue_resort_element(pqueue* q, pqueue_elem_ref ref)
         heap[pq_parent(i)] = temp;
         heap[pq_parent(i)]->heap_index = pq_parent(i);
         i = pq_parent(i);
+        ret = true;
     }
+
+    return ret;
 }
 
 static void pqueue_remove_element(pqueue* q, pqueue_elem_ref ref)
 {
+    hhassert(darray_get_len(q->heap) > 0);
     pqueue_elem* elem = ref;
     hhassert(elem->heap_index >= 0);
     int heap_index = elem->heap_index;
 
     elem->heap_index = -1;
 
-    /* fixup heap */
-    pqueue_elem** heap = darray_get_data(q->heap);
-    pqueue_elem** last = darray_get_last_addr(q->heap);
+    /*
+     * We don't need to do anything special if the element being removed is the
+     * last one
+     */
+    if ((size_t)heap_index < darray_get_len(q->heap) - 1)
+    {
+        /* Place the last element where ref was */
+        pqueue_elem** last = darray_get_last_addr(q->heap);
+        pqueue_elem** heap = darray_get_data(q->heap);
 
-    heap[heap_index] = (*last);
-    heap[heap_index]->heap_index = heap_index;
+        heap[heap_index] = (*last);
+        heap[heap_index]->heap_index = heap_index;
+
+        /* The replacement element may need to be pushed up the heap */
+        if(!pqueue_resort_element(q, heap[heap_index]))
+        {
+            /*
+             * If the replacement element was not pushed up, it may need to
+             * be pushed down
+             */
+            heapify(q, heap_index);
+        }
+    }
 
     darray_sub_len(q->heap, 1);
 
-    heapify(q, heap_index);
+    heap_validate(q);
 }
 
 static void heap_insert(pqueue* q, pqueue_elem* elem)
@@ -178,36 +225,6 @@ static void heap_insert(pqueue* q, pqueue_elem* elem)
     darray_append(&q->heap, &elem, 1);
     pqueue_resort_element(q, elem);
 }
-
-#if 0
-static bool heap_validate(pqueue* q)
-{
-    pqueue_elem** heap = darray_get_data(q->heap);
-
-    for(size_t i = 1; i < darray_get_len(q->heap); i++)
-    {
-        int parent = pq_parent(i);
-        if (heap[parent]->heap_index != parent)
-        {
-            printf("INVALID HEAP_INDEX AT %d: %d\n",
-                   (int)parent, heap[parent]->heap_index);
-            return false;
-        }
-
-        if (pq_compare(q, heap[parent]->data, heap[i]->data) < 0)
-        {
-            printf("heap[%d] (%" PRId64 "), parent of heap[%d] (%" PRId64
-                   ") INVALID\n", parent, heap[parent]->data.i_val,
-                   (int)i, heap[i]->data.i_val);
-            return false;
-        }
-    }
-
-    return true;
-}
-#else
-#define heap_validate(q)
-#endif
 
 /*
  * create a pqueue. it will grow dynamically, but use hintsize if you
