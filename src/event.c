@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "event.h"
+#include "hhassert.h"
 #include "hhclock.h"
 #include "hhmemory.h"
 #include "platform.h"
@@ -231,6 +232,8 @@ event_add_time_event_with_delay(event_loop* loop,
                                 uint64_t frequency_ms,
                                 uint64_t initial_delay_ms, void* data)
 {
+    hhassert(frequency_ms > 0);
+
     /* initialize the new time event */
     event_time* et = hhmalloc(sizeof(*et));
     if (et == NULL)
