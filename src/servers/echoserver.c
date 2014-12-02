@@ -61,10 +61,9 @@ static void on_message_received(server_conn* conn, endpoint_msg* msg,
     server_conn_send_msg(conn, msg);
 }
 
-static void on_ping(server_conn* conn_info, char* payload,
+static void on_ping(server_conn* conn, char* payload,
                     int payload_len, void* userdata)
 {
-    hhunused(conn_info);
     hhunused(payload);
     hhunused(payload_len);
     hhunused(userdata);
@@ -80,6 +79,8 @@ static void on_ping(server_conn* conn_info, char* payload,
         g_pings_received = 0;
         last_sample_time = now;
     }
+
+    server_conn_send_pong(conn, payload, payload_len);
 }
 
 static bool
