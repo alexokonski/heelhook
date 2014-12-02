@@ -64,6 +64,13 @@ test_client: $(ENDPOINT_OBJECTS) client.o test_client.o event.o pqueue.o
 echoserver: echoserver.o $(HEELHOOK_OBJECTS)
 	$(TEST_CC)
 
+echoserver_all: FINAL_CFLAGS += -DHH_WITH_LIBEVENT
+echoserver_all: rm_echoserver echoserver.o $(HEELHOOK_OBJECTS)
+	$(CC) $(TEST_LIBS) -o echoserver echoserver.o $(HEELHOOK_OBJECTS) -levent
+
+rm_echoserver:
+	rm -f echoserver.o
+
 chatserver: chatserver.o cJSON.o $(HEELHOOK_OBJECTS)
 	$(TEST_CC) -lm
 

@@ -31,6 +31,8 @@
 #include "error_code.h"
 #include "endpoint.h"
 #include "event.h"
+#include "iloop.h"
+#include "loop_adapters/event_iface.h"
 #include "inlist.h"
 #include "hhassert.h"
 #include "hhclock.h"
@@ -77,10 +79,6 @@ struct server_conn
 struct server
 {
     bool stopping;
-    event_time_id watchdog_id;
-    event_time_id heartbeat_id;
-    event_time_id heartbeat_expire_id;
-    event_time_id handshake_timeout_id;
     int fd;
     server_conn* connections;
     server_conn* active_head;
@@ -91,13 +89,61 @@ struct server
     server_conn* handshake_tail;
     server_conn* heartbeat_head;
     server_conn* heartbeat_tail;
-    event_loop* loop;
+    iloop loop;
     config_server_options options;
     server_callbacks cbs;
     void* userdata;
 };
 
-static void write_to_client_callback(event_loop* loop, int fd, void* data);
+static void accept_callback(iloop* loop, int fd, void* data);
+static void read_from_client_callback(iloop* loop, int fd, void* data);
+static void write_to_client_callback(iloop* loop, int fd, void* data);
+
+static iloop_io_callback* g_io_cbs[ILOOP_NUMBER_OF_IO_CB] =
+{
+    accept_callback, /* ILOOP_ACCEPT_CB */
+    read_from_client_callback, /* ILOOP_READ_CB */
+    write_to_client_callback /* ILOOP_WRITE_CB */
+};
+
+static void stop_watchdog(iloop* loop,iloop_time_cb_type type,void* data);
+static void send_heartbeats(iloop* loop,iloop_time_cb_type type,void* data);
+static void expire_heartbeats(iloop* loop,iloop_time_cb_type type,void* data);
+static void timeout_handshakes(iloop* loop,iloop_time_cb_type type,void* data);
+
+static iloop_time_callback* g_time_cbs[ILOOP_NUMBER_OF_TIME_CB] =
+{
+    stop_watchdog, /* ILOOP_WATCHDOG_CB */
+    send_heartbeats, /* ILOOP_HEARTBEAT_CB */
+    expire_heartbeats, /* ILOOP_HEARTBEAT_EXPIRE_CB */
+    timeout_handshakes /* ILOOP_HANDSHAKE_TIMEOUT_CB */
+};
+
+iloop* iloop_from_io(iloop_cb_type type, void *data)
+{
+    switch (type)
+    {
+    case ILOOP_ACCEPT_CB:
+        return &(((server*)data)->loop);
+
+    case ILOOP_READ_CB:
+    case ILOOP_WRITE_CB:
+        return &(((server_conn*)data)->serv->loop);
+
+    case ILOOP_NUMBER_OF_IO_CB:
+        hhassert(false);
+        return NULL;
+    }
+
+    hhassert(false);
+    return NULL;
+}
+
+iloop* iloop_from_time(iloop_time_cb_type type, void *data)
+{
+    hhunused(type);
+    return &(((server*)data)->loop);
+}
 
 static bool server_on_connect_callback(endpoint* conn, protocol_conn* proto_conn,
                                     void* userdata);
@@ -194,12 +240,12 @@ static void deactivate_conn(server* serv, server_conn* conn)
     }
 }
 
-static event_result queue_write(server_conn* conn)
+static iloop_result queue_write(server_conn* conn)
 {
     /* queue up writing response back */
-    event_result er;
-    er = event_add_io_event(conn->serv->loop, conn->fd, EVENT_WRITEABLE,
-                             write_to_client_callback, conn);
+    iloop_result er;
+    iloop* loop = &conn->serv->loop;
+    er = loop->add_io(loop, conn->fd, ILOOP_WRITEABLE, ILOOP_WRITE_CB, conn);
 
     return er;
 }
@@ -226,20 +272,21 @@ static void server_on_pong_callback(endpoint* conn_info, char* payload,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
+    if (serv->options.heartbeat_interval_ms > 0 &&
+        serv->options.heartbeat_ttl_ms > 0)
+    {
+        if (payload_len == sizeof(g_heartbeat_msg) - 1 &&
+            memcmp(payload, g_heartbeat_msg, payload_len) == 0)
+        {
+            /* this conn is safe, move to the back of the list */
+            conn->timeout = SERVER_HEARTEAT_RECEIVED;
+            INLIST_MOVE_BACK(serv, conn, timeout_next, timeout_prev,
+                             heartbeat_head, heartbeat_tail);
+        }
+    }
+
     if (serv->cbs.on_pong != NULL)
     {
-        if (serv->options.heartbeat_interval_ms > 0 &&
-            serv->options.heartbeat_ttl_ms > 0)
-        {
-            if (payload_len == sizeof(g_heartbeat_msg) - 1 &&
-                memcmp(payload, g_heartbeat_msg, payload_len) == 0)
-            {
-                /* this conn is safe, move to the back of the list */
-                conn->timeout = SERVER_HEARTEAT_RECEIVED;
-                INLIST_MOVE_BACK(serv, conn, timeout_next, timeout_prev,
-                                 heartbeat_head, heartbeat_tail);
-            }
-        }
         serv->cbs.on_pong(conn, payload, payload_len, serv->userdata);
     }
 }
@@ -252,16 +299,15 @@ static void server_on_close_callback(endpoint* conn_info, int code,
 
     server_conn* conn = userdata;
     server* serv = conn->serv;
+    iloop* loop = &serv->loop;
 
     if (serv->cbs.on_close != NULL)
     {
-        serv->cbs.on_close(conn, code, reason, reason_len,
-                                    serv->userdata);
+        serv->cbs.on_close(conn, code, reason, reason_len, serv->userdata);
     }
 
     /* take this client out of the event loop */
-    event_delete_io_event(serv->loop, conn->fd, EVENT_READABLE |
-                          EVENT_WRITEABLE);
+    loop->delete_io(loop, conn->fd, ILOOP_READABLE | ILOOP_WRITEABLE);
 
     /* close the socket */
     close(conn->fd);
@@ -273,13 +319,13 @@ static void server_on_close_callback(endpoint* conn_info, int code,
      * if we're stopping, and we were the last connection, tear down the
      * event loop
      */
-    if (serv->stopping && serv->active_head == NULL)
+    if (serv->stopping && serv->active_head == NULL && loop->stop != NULL)
     {
-        event_stop_loop(serv->loop);
+        loop->stop(loop);
     }
 }
 
-static void write_to_client_callback(event_loop* loop, int fd, void* data)
+static void write_to_client_callback(iloop* loop, int fd, void* data)
 {
     server_conn* conn = data;
 
@@ -293,7 +339,7 @@ static void write_to_client_callback(event_loop* loop, int fd, void* data)
          * done writing to the client for now, don't call this again until
          * there's more data to be sent
          */
-        event_delete_io_event(loop, fd, EVENT_WRITEABLE);
+        loop->delete_io(loop, fd, ILOOP_WRITEABLE);
         return;
     case ENDPOINT_WRITE_ERROR:
     case ENDPOINT_WRITE_CLOSED:
@@ -381,11 +427,10 @@ server_on_connect_callback(endpoint* conn_info,
         extensions = NULL;
     }
 
-    event_result er = queue_write(conn);
-    if (er != EVENT_RESULT_SUCCESS)
+    iloop_result ir = queue_write(conn);
+    if (ir != ILOOP_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "write_handshake event loop error: %d",
-                  er);
+        hhlog(HHLOG_LEVEL_ERROR, "write_handshake event loop error: %d", ir);
         goto reject_client;
     }
 
@@ -399,8 +444,7 @@ server_on_connect_callback(endpoint* conn_info,
 
     config_server_options* opt = &serv->options;
     uint64_t hb_interval = opt->heartbeat_interval_ms;
-    uint64_t hb_ttl = opt->heartbeat_ttl_ms;
-    if (hb_interval > 0 && hb_ttl > 0)
+    if (hb_interval > 0)
     {
         conn->timeout = SERVER_HEARTEAT_RECEIVED;
         INLIST_APPEND(serv, conn, timeout_next, timeout_prev, heartbeat_head,
@@ -429,22 +473,22 @@ static void server_on_message_callback(endpoint* conn_info, endpoint_msg* msg,
     }
 }
 
-static void read_from_client_callback(event_loop* loop, int fd, void* data)
+static void read_from_client_callback(iloop* loop, int fd, void* data)
 {
     hhunused(loop);
     server_conn* conn = data;
 
-    event_result er;
+    iloop_result ir;
     endpoint_read_result r = endpoint_read(&conn->endp, fd);
     switch (r)
     {
     case ENDPOINT_READ_SUCCESS:
         return;
     case ENDPOINT_READ_SUCCESS_WROTE_DATA:
-        er = queue_write(conn);
-        if (er != EVENT_RESULT_SUCCESS)
+        ir = queue_write(conn);
+        if (ir != ILOOP_SUCCESS)
         {
-            hhlog(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
+            hhlog(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", ir);
         }
         return;
     case ENDPOINT_READ_ERROR:
@@ -453,14 +497,14 @@ static void read_from_client_callback(event_loop* loop, int fd, void* data)
          * errors will have been logged and handled properly by on_close
          * callback
          */
-        event_delete_io_event(loop, fd, EVENT_READABLE);
+        loop->delete_io(loop, fd, ILOOP_READABLE);
         return;
     }
 
     hhassert(0);
 }
 
-static void accept_callback(event_loop* loop, int fd, void* data)
+static void accept_callback(iloop* loop, int fd, void* data)
 {
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
@@ -483,25 +527,40 @@ static void accept_callback(event_loop* loop, int fd, void* data)
         return;
     }
 
-    event_result r;
-    r = event_add_io_event(loop, client_fd, EVENT_READABLE,
-                           read_from_client_callback, conn);
+    iloop_result r;
+    r = loop->add_io(loop, client_fd, ILOOP_READABLE, ILOOP_READ_CB, conn);
 
-    if (r != EVENT_RESULT_SUCCESS)
+    if (r != ILOOP_SUCCESS)
     {
         hhlog(HHLOG_LEVEL_ERROR, "add client to event loop error: %d", r);
-        event_delete_io_event(loop, client_fd, EVENT_READABLE);
+        loop->delete_io(loop, client_fd, ILOOP_READABLE);
     }
 }
 
 server* server_create(config_server_options* options,
                       server_callbacks* callbacks, void* userdata)
 {
+    server* serv = server_create_detached(options, callbacks, userdata);
+    if (serv == NULL) return NULL;
+
+    if (!iloop_event_attach_internal(&serv->loop, &serv->options))
+    {
+        server_destroy(serv);
+        return NULL;
+    }
+
+    return serv;
+}
+
+server* server_create_detached(config_server_options* options,
+                               server_callbacks* callbacks, void* userdata)
+{
     int i = 0;
     server* serv = hhmalloc(sizeof(*serv));
     if (serv == NULL) return NULL;
 
     serv->stopping = false;
+    serv->fd = -1;
     serv->active_head = NULL;
     serv->active_tail = NULL;
     serv->free_head = NULL;
@@ -510,10 +569,6 @@ server* server_create(config_server_options* options,
     serv->handshake_tail = NULL;
     serv->heartbeat_head = NULL;
     serv->heartbeat_tail = NULL;
-    serv->watchdog_id = EVENT_INVALID_TIME_ID;
-    serv->heartbeat_id = EVENT_INVALID_TIME_ID;
-    serv->heartbeat_expire_id = EVENT_INVALID_TIME_ID;
-    serv->handshake_timeout_id = EVENT_INVALID_TIME_ID;
     serv->cbs = *callbacks;
     serv->options = *options;
     serv->userdata = userdata;
@@ -522,8 +577,10 @@ server* server_create(config_server_options* options,
     serv->connections = hhmalloc((size_t)max_clients * sizeof(server_conn));
     if (serv->connections == NULL) goto err_create;
 
-    serv->loop = event_create_loop(options->max_clients + 1024);
-    if (serv->loop == NULL) goto err_create;
+    memset(&serv->loop, 0, sizeof(serv->loop));
+    serv->loop.userdata = NULL;
+    serv->loop.io_cbs = g_io_cbs;
+    serv->loop.time_cbs = g_time_cbs;
 
     /*
      * all available connection objects are 'free', initialize each and add it
@@ -552,14 +609,21 @@ err_create:
         }
         hhfree(serv->connections);
     }
-    if (serv->loop != NULL) event_destroy_loop(serv->loop);
+    if (serv->loop.userdata != NULL && serv->loop.cleanup != NULL)
+    {
+        serv->loop.cleanup(&serv->loop);
+    }
     hhfree(serv);
     return NULL;
+
 }
 
 void server_destroy(server* serv)
 {
-    event_destroy_loop(serv->loop);
+    if (serv->loop.cleanup != NULL)
+    {
+        serv->loop.cleanup(&serv->loop);
+    }
     int max_clients = serv->options.max_clients;
     for (int i = 0; i < max_clients; i++)
     {
@@ -584,9 +648,10 @@ void* server_conn_get_userdata(server_conn* conn)
 
 static void server_teardown(server* serv)
 {
+    iloop* loop = &serv->loop;
+
     /* stop listening for new connections */
-    event_delete_io_event(serv->loop, serv->fd,
-                          EVENT_READABLE | EVENT_WRITEABLE);
+    loop->delete_io(loop, serv->fd, ILOOP_READABLE | ILOOP_WRITEABLE);
 
     /* stop accepting connections to the server */
     close(serv->fd);
@@ -597,7 +662,10 @@ static void server_teardown(server* serv)
      */
     if (serv->active_head == NULL)
     {
-        event_stop_loop(serv->loop);
+        if (loop->stop != NULL)
+        {
+            loop->stop(loop);
+        }
         return;
     }
 
@@ -610,7 +678,7 @@ static void server_teardown(server* serv)
 }
 
 /* check if we've been asked to stop, and stop */
-static void stop_watchdog(event_loop* loop, event_time_id id, void* data)
+static void stop_watchdog(iloop* loop, iloop_time_cb_type type, void* data)
 {
     server* serv = data;
 
@@ -623,32 +691,20 @@ static void stop_watchdog(event_loop* loop, event_time_id id, void* data)
     if (serv->stopping)
     {
         /* we aren't needed any more */
-        event_delete_time_event(loop, id);
-
-        if (serv->heartbeat_id != EVENT_INVALID_TIME_ID)
-        {
-            event_delete_time_event(loop, serv->heartbeat_id);
-        }
-
-        if (serv->heartbeat_expire_id != EVENT_INVALID_TIME_ID)
-        {
-            event_delete_time_event(loop, serv->heartbeat_expire_id);
-        }
-
-        if (serv->handshake_timeout_id != EVENT_INVALID_TIME_ID)
-        {
-            event_delete_time_event(loop, serv->handshake_timeout_id);
-        }
+        loop->delete_time(loop, type);
+        loop->delete_time(loop, ILOOP_HEARTBEAT_CB);
+        loop->delete_time(loop, ILOOP_HEARTBEAT_EXPIRE_CB);
+        loop->delete_time(loop, ILOOP_HANDSHAKE_TIMEOUT_CB);
 
         /* tear down everything else */
         server_teardown(serv);
     }
 }
 
-static void send_heartbeats(event_loop* loop, event_time_id id, void* data)
+static void send_heartbeats(iloop* loop, iloop_time_cb_type type, void* data)
 {
     hhunused(loop);
-    hhunused(id);
+    hhunused(type);
 
     server* serv = data;
     uint64_t hb_ttl = serv->options.heartbeat_ttl_ms;
@@ -670,10 +726,10 @@ static void send_heartbeats(event_loop* loop, event_time_id id, void* data)
     }
 }
 
-static void expire_heartbeats(event_loop* loop, event_time_id id, void* data)
+static void expire_heartbeats(iloop* loop, iloop_time_cb_type type, void* data)
 {
     hhunused(loop);
-    hhunused(id);
+    hhunused(type);
 
     server* serv = data;
     INLIST_FOREACH(serv, server_conn, conn, timeout_next, timeout_prev,
@@ -693,21 +749,21 @@ static void expire_heartbeats(event_loop* loop, event_time_id id, void* data)
     }
 }
 
-static void timeout_handshakes(event_loop* loop, event_time_id id, void* data)
+static void timeout_handshakes(iloop* loop, iloop_time_cb_type type, void* data)
 {
     hhunused(loop);
-    hhunused(id);
+    hhunused(type);
 
     server* serv = data;
     uint64_t now = hhclock_get_now_ms();
     INLIST_FOREACH(serv, server_conn, conn, timeout_next, timeout_prev,
                    handshake_head, handshake_tail)
     {
-        if (conn->timeout >= now)
+        if (now >= conn->timeout)
         {
             hhlog(HHLOG_LEVEL_DEBUG,
                 "closing, handshake timed out %"PRIu64" >= %"PRIu64" (%d, %p)",
-                  conn->timeout, now, conn->fd, conn);
+                 conn->timeout, now, conn->fd, conn);
             server_on_close_callback(&conn->endp, 0, NULL, 0, conn);
         }
         else
@@ -737,10 +793,10 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 {
     endpoint_result r = endpoint_send_msg(&conn->endp, msg);
 
-    event_result er = queue_write(conn);
-    if (er != EVENT_RESULT_SUCCESS)
+    iloop_result ir = queue_write(conn);
+    if (ir != ILOOP_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", ir);
         return SERVER_RESULT_FAIL;
     }
 
@@ -753,10 +809,10 @@ server_result server_conn_send_ping(server_conn* conn, char* payload, int
 {
     endpoint_result r = endpoint_send_ping(&conn->endp, payload, payload_len);
 
-    event_result er = queue_write(conn);
-    if (er != EVENT_RESULT_SUCCESS)
+    iloop_result ir = queue_write(conn);
+    if (ir != ILOOP_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "send_ping event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "send_ping event loop error: %d", ir);
         return SERVER_RESULT_FAIL;
     }
 
@@ -769,10 +825,10 @@ server_result server_conn_send_pong(server_conn* conn, char* payload, int
 {
     endpoint_result r = endpoint_send_pong(&conn->endp, payload, payload_len);
 
-    event_result er = queue_write(conn);
-    if (er != EVENT_RESULT_SUCCESS)
+    iloop_result ir = queue_write(conn);
+    if (ir != ILOOP_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "send_pong event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "send_pong event loop error: %d", ir);
         return SERVER_RESULT_FAIL;
     }
 
@@ -788,10 +844,10 @@ server_result server_conn_close(server_conn* conn, uint16_t code,
 {
     endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
 
-    event_result er = queue_write(conn);
-    if (er != EVENT_RESULT_SUCCESS)
+    iloop_result ir = queue_write(conn);
+    if (ir != ILOOP_SUCCESS)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "close event loop error: %d", er);
+        hhlog(HHLOG_LEVEL_ERROR, "close event loop error: %d", ir);
         return SERVER_RESULT_FAIL;
     }
 
@@ -871,10 +927,7 @@ void server_stop(server* serv)
     serv->stopping = true;
 }
 
-/*
- * blocks indefinitely listening to connections from clients
- */
-server_result server_listen(server* serv)
+server_result server_init(server* serv)
 {
     config_server_options* opt = &serv->options;
 
@@ -927,10 +980,12 @@ server_result server_listen(server* serv)
     /* socket was set up successfully */
     serv->fd = s;
 
-    event_result r;
-    r = event_add_io_event(serv->loop,s,EVENT_READABLE,accept_callback,serv);
+    iloop* loop = &serv->loop;
 
-    if (r != EVENT_RESULT_SUCCESS)
+    iloop_result r;
+    r = loop->add_io(loop, s, ILOOP_READABLE, ILOOP_ACCEPT_CB, serv);
+
+    if (r != ILOOP_SUCCESS)
     {
         hhlog(HHLOG_LEVEL_ERROR, "error adding accept callback to event"
                   "loop: %d", r);
@@ -942,9 +997,7 @@ server_result server_listen(server* serv)
      * add watchdog so we know when we're being asked to shut down
      * the server
      */
-    serv->watchdog_id =
-        event_add_time_event(serv->loop, stop_watchdog,
-                             SERVER_WATCHDOG_FREQ_MS, serv);
+    loop->add_time(loop, ILOOP_WATCHDOG_CB, SERVER_WATCHDOG_FREQ_MS, 0, serv);
 
     uint64_t hb_interval = serv->options.heartbeat_interval_ms;
     uint64_t hb_ttl = serv->options.heartbeat_ttl_ms;
@@ -952,27 +1005,63 @@ server_result server_listen(server* serv)
     if (hb_interval > 0)
     {
         /* send a ping every hb_interval */
-        serv->heartbeat_id =
-            event_add_time_event(serv->loop,send_heartbeats,hb_interval,serv);
+        loop->add_time(loop, ILOOP_HEARTBEAT_CB, hb_interval, 0,
+                       serv);
 
         if (hb_ttl > 0)
         {
             /* check for responses every hb_interval, hb_ttl seconds after */
-            serv->heartbeat_expire_id =
-                event_add_time_event_with_delay(serv->loop, expire_heartbeats,
-                                                hb_interval, hb_ttl, serv);
+            loop->add_time(loop, ILOOP_HEARTBEAT_EXPIRE_CB, hb_interval,
+                           hb_ttl, serv);
         }
     }
 
     if (handshake_timeout > 0)
     {
-        serv->handshake_timeout_id =
-            event_add_time_event(serv->loop, timeout_handshakes,
-                                 SERVER_HANDSHAKE_TIMEOUT_FREQ_MS, serv);
+        loop->add_time(loop, ILOOP_HANDSHAKE_TIMEOUT_CB,
+                       SERVER_HANDSHAKE_TIMEOUT_FREQ_MS, 0, serv);
     }
 
+    return SERVER_RESULT_SUCCESS;
+}
+
+/*
+ * Get internal iloop to attach this server to another event loop
+ */
+iloop* server_get_iloop(server* serv)
+{
+    return &serv->loop;
+}
+
+/*
+ * blocks indefinitely listening to connections from clients
+ */
+server_result server_listen(server* serv)
+{
+    /* if no loop has been attached, attach default loop */
+    if (serv->loop.userdata == NULL)
+    {
+        if (!iloop_event_attach_internal(&serv->loop, &serv->options))
+        {
+            server_destroy(serv);
+            return SERVER_RESULT_FAIL;
+        }
+    }
+
+    /* start the server, if it hasn't been already */
+    if (serv->fd == -1)
+    {
+        server_result r = server_init(serv);
+        if (r != SERVER_RESULT_SUCCESS)
+        {
+            return r;
+        }
+    }
+
+    hhassert(serv->loop.listen != NULL );
+
     /* block and process all connections */
-    event_pump_events(serv->loop, 0);
+    serv->loop.listen(&serv->loop);
 
     return SERVER_RESULT_SUCCESS;
 }

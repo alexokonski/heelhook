@@ -32,12 +32,13 @@
 #define __SERVER_H_
 
 #include "endpoint.h"
+#include "iloop.h"
 #include "config.h"
 #include "util.h"
 #include <stdint.h>
 
-typedef struct server server;
 typedef struct server_conn server_conn;
+typedef struct server server;
 
 /* on_connect is called when a client has sent their side of the handshake, but
  * the server has not yet responded
@@ -66,8 +67,8 @@ typedef void (server_on_message)(server_conn* conn, endpoint_msg* msg,
                                  void* userdata);
 
 /*
- * on_ping is called when the client sends the server a ping. a ping is always
- * sent for you automatically to conform to the RFC
+ * on_ping is called when the client sends the server a ping. If you specify
+ * this, you'll have to send a pong yourself to conform to the RFC
  */
 typedef void (server_on_ping)(server_conn* conn_info, char* payload,
                               int payload_len, void* userdata);
@@ -106,10 +107,19 @@ typedef struct
 } server_callbacks;
 
 /*
- * create an instance of a 'server' options and callbacks must be valid
+ * create an instance of a 'server'. options and callbacks must be valid
  * pointers until server_stop is called and server_listen returns
  */
 server* server_create(config_server_options* options,
+                      server_callbacks* callbacks, void* userdata);
+
+/*
+ * create an instance of a 'server'. options and callbacks must be valid
+ * pointers until server_stop is called and server_listen returns. Does not
+ * attach the default event loop. An attachment function from the adapters/
+ * directory must be called before using.
+ */
+server* server_create_detached(config_server_options* options,
                       server_callbacks* callbacks, void* userdata);
 
 /*
@@ -188,7 +198,20 @@ const char* server_get_resource(server_conn* conn);
 void server_stop(server* serv);
 
 /*
- * blocks indefinitely listening to connections from clients
+ * Initiates the server. Binds port and calls listen() on socket. Only call
+ * this directly if you are going to use your own event loop instead of
+ * calling server_listen
+ */
+server_result server_init(server* serv);
+
+/*
+ * Get internal iloop to attach this server to another event loop
+ */
+iloop* server_get_iloop(server* serv);
+
+/*
+ * Calls server_init, then blocks indefinitely listening for connections from
+ * clients
  */
 server_result server_listen(server* serv);
 

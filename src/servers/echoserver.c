@@ -31,12 +31,18 @@
 #include "../server.h"
 #include "../hhlog.h"
 #include "../util.h"
+#include "../hhclock.h"
 
 #include <inttypes.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/time.h>
+
+#ifdef HH_WITH_LIBEVENT
+#include "../loop_adapters/libevent_iface.h"
+#endif
 
 static server* g_serv = NULL;
 static uint64_t g_pings_received = 0;
@@ -139,7 +145,10 @@ int main(int argc, char** argv)
 {
     if (argc < 2)
     {
-        fprintf(stderr, "usage: %s port\n", argv[0]);
+        fprintf(stderr,
+"usage: %s port [event loop]\n"
+"    event loop is one of: libevent, libuv, libev. echoserver must have been\n"
+"    built with the proper event support", argv[0]);
         exit(1);
     }
 
@@ -155,9 +164,9 @@ int main(int argc, char** argv)
     {
         .bindaddr = NULL,
         .max_clients = 1000,
-        .heartbeat_interval_ms = 0,
-        .heartbeat_ttl_ms = 0,
-        .handshake_timeout_ms = 0,
+        .heartbeat_interval_ms = 30000,
+        .heartbeat_ttl_ms = 5000,
+        .handshake_timeout_ms = 10000,
 
         .endp_settings =
         {
@@ -186,11 +195,39 @@ int main(int argc, char** argv)
 
     hhlog_set_options(&g_log_options);
 
-    g_serv = server_create(&options, &callbacks, NULL);
+    g_serv = server_create_detached(&options, &callbacks, NULL);
 
-    server_listen(g_serv);
+    char* eventloop = "";
+    if (argc > 2) eventloop = argv[2];
 
-    server_destroy(g_serv);
+    if (strcmp(eventloop, "libevent") == 0)
+    {
+#ifdef HH_WITH_LIBEVENT
+        struct event_base* base = event_base_new();
+
+        hhlog(HHLOG_LEVEL_DEBUG, "Starting with libevent");
+        /* use libevent as event loop */
+        iloop_attach_libevent(server_get_iloop(g_serv), base, &options);
+        server_init(g_serv);
+
+        event_base_dispatch(base);
+        server_destroy(g_serv);
+        event_base_free(base);
+#else
+        fprintf(stderr, "you must build this file with HH_WITH_LIBEVENT\n");
+#endif
+        goto done;
+    }
+    else
+    {
+        hhlog(HHLOG_LEVEL_DEBUG, "Starting with built-in event loop");
+        /* use default event loop */
+        server_listen(g_serv);
+        server_destroy(g_serv);
+        goto done;
+    }
+
+done:
     g_serv = NULL;
     exit(0);
 }
