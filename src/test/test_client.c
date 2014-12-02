@@ -103,6 +103,8 @@ static void usage(char* exec_name)
 "    message (see --message-body). one_client_mps must be greater than 0 and\n"
 "    less than\n"
 "    or equal to 1000 (default:on with one_client_mps=10)\n"
+" -t --timeout\n"
+"    Test heelhook echoserver's handshake/heartbeat timeouts\n"
 "-b <string>, --message-body <string>\n"
 "    When in message per second benchmark mode, send <string> as the message\n"
 "    payload.\n"
@@ -653,10 +655,10 @@ static void do_autobahn_test(const char* addr, int port, int num)
 }
 
 static void
-connect_mps_client(client* c, config_client_options* options,
-                   client_callbacks* cbs, const char* addr, int port,
-                   const char* resource, const char* host,
-                   const char** extra_headers,event_loop* loop)
+connect_client(client* c, config_client_options* options,
+               client_callbacks* cbs, const char* addr, int port,
+               const char* resource, const char* host,
+               const char** extra_headers,event_loop* loop, bool is_mps)
 {
     client_result cr;
     event_result er;
@@ -669,8 +671,18 @@ connect_mps_client(client* c, config_client_options* options,
         hhlog(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
         exit(1);
     }
-    er = event_add_io_event(loop, client_fd(c), EVENT_WRITEABLE,
-                            mps_client_connect, c);
+
+    if (is_mps)
+    {
+        er = event_add_io_event(loop, client_fd(c), EVENT_WRITEABLE,
+                                mps_client_connect, c);
+    }
+    else
+    {
+        er = event_add_io_event(loop, client_fd(c), EVENT_WRITEABLE,
+                                test_client_connect, c);
+    }
+
     if (er != EVENT_RESULT_SUCCESS)
     {
         hhlog(HHLOG_LEVEL_ERROR, "event fail: %d, fd: %d", er, client_fd(c));
@@ -698,8 +710,8 @@ static void mps_connect_proc(event_loop* loop, event_time_id id, void* data)
     client* c = &info->clients[info->num_connected];
 
     /* connect a client */
-    connect_mps_client(c, info->options, info->cbs, info->addr, info->port,
-                       info->resource, info->host, info->extra_headers, loop);
+    connect_client(c, info->options, info->cbs, info->addr, info->port,
+                   info->resource, info->host, info->extra_headers, loop, true);
     info->num_connected++;
 
     /* if this was the last client, we're done */
@@ -749,8 +761,8 @@ static void do_mps_test(const char* addr, const char* resource, int port,
         for (int i = 0; i < num; i++)
         {
             client* c = &clients[i];
-            connect_mps_client(c, &options, &cbs, addr, port, resource, host,
-                               extra_headers, loop);
+            connect_client(c, &options, &cbs, addr, port, resource, host,
+                               extra_headers, loop, true);
         }
     }
     else
@@ -779,6 +791,84 @@ static void do_mps_test(const char* addr, const char* resource, int port,
     hhfree(clients);
 }
 
+static void timeout_on_ping(client* c, char* payload, int payload_len,
+                            void* userdata)
+{
+    hhunused(c);
+    hhunused(payload);
+    hhunused(payload_len);
+    hhunused(userdata);
+    hhlog(HHLOG_LEVEL_INFO, "client %d got ping: %.*s", client_fd(c),
+          payload_len, payload);
+}
+
+static void timeout_on_close(client* c, int code, const char* reason,
+                             int reason_len, void* userdata)
+{
+    event_loop* loop = userdata;
+    if (reason_len > 0)
+    {
+        hhlog(HHLOG_LEVEL_INFO, "client %d got close: %d %.*s",
+                  client_fd(c), code, reason_len, reason);
+    }
+    else
+    {
+        hhlog(HHLOG_LEVEL_INFO, "client %d got reason-less close: %d",
+                  client_fd(c), code);
+    }
+
+    event_delete_io_event(loop, client_fd(c),
+                          EVENT_WRITEABLE | EVENT_READABLE);
+    client_disconnect(c);
+}
+
+static void do_timeout_test(const char* addr, const char* resource, int port)
+{
+    config_client_options options;
+    options.endp_settings.protocol_buf_init_len = 4 * 1024;
+
+    protocol_settings* conn_settings = &options.endp_settings.conn_settings;
+    conn_settings->write_max_frame_size = 16 * 1024;
+    conn_settings->read_max_msg_size = 16 * 1024;
+    conn_settings->read_max_num_frames = 20 * 1024 * 1024;
+    conn_settings->rand_func = random_callback;
+
+    client_callbacks cbs;
+    cbs.on_open = NULL;
+    cbs.on_message = NULL;
+    cbs.on_ping = timeout_on_ping;
+    cbs.on_pong = NULL;
+    cbs.on_close = timeout_on_close;
+
+    static const char* extra_headers[] =
+    {
+        "Origin", "localhost",
+        NULL
+    };
+
+    char host[1024];
+    snprintf(host, sizeof(host), "%s:%d", addr, port);
+
+    client c;
+    event_loop* loop = event_create_loop(1 + 1024);
+
+    connect_client(&c, &options, &cbs, addr, port, resource, host,
+                   extra_headers, loop, false);
+
+    random_socket_connect(addr, port, loop);
+
+    event_pump_events(loop, 0);
+    event_destroy_loop(loop);
+}
+
+typedef enum
+{
+    AUTOBAHN,
+    CHATSERVER,
+    MPS,
+    TIMEOUT
+} client_mode;
+
 int main(int argc, char** argv)
 {
     const char* addr = "127.0.0.1";
@@ -787,9 +877,8 @@ int main(int argc, char** argv)
     const char* mps_str = "10";
     const char* resource = "/";
     const char* sleep_str = "0";
-    bool autobahn_mode = false;
-    bool chatserver_mode = false;
     bool debug = false;
+    client_mode mode = MPS;
 
     static struct option long_options[] =
     {
@@ -800,6 +889,7 @@ int main(int argc, char** argv)
         { "autobahn"    , no_argument      , NULL, 'u'},
         { "chatserver"  , no_argument      , NULL, 'c'},
         { "mps_bench"   , required_argument, NULL, 'm'},
+        { "timeout"     , no_argument      , NULL, 't'},
         { "num"         , required_argument, NULL, 'n'},
         { "message-body", required_argument, NULL, 'b'},
         { "rampup-sleep", required_argument, NULL, 's'},
@@ -832,11 +922,11 @@ int main(int argc, char** argv)
             break;
 
         case 'u':
-            autobahn_mode = true;
+            mode = AUTOBAHN;
             break;
 
         case 'c':
-            chatserver_mode = true;
+            mode = CHATSERVER;
             break;
 
         case 'n':
@@ -857,6 +947,10 @@ int main(int argc, char** argv)
 
         case 's':
             sleep_str = optarg;
+            break;
+
+        case 't':
+            mode = TIMEOUT;
             break;
 
         case '?':
@@ -904,22 +998,25 @@ int main(int argc, char** argv)
     srand(time(NULL));
     hhlog_set_options(&g_log_options);
 
-    if (autobahn_mode)
+    switch (mode)
     {
+    case AUTOBAHN:
         /*
          * connect one client at a time running num test cases against an 
          * autobahn fuzzing server
          */
         do_autobahn_test(addr, port, num);
-    }
-    else if (chatserver_mode)
-    {
+        break;
+    case CHATSERVER:
         /* connect num clients in parallel and start sending stuff */
         do_chatserver_test(addr, port, num);
-    }
-    else
-    {
+        break;
+    case MPS:
         do_mps_test(addr, resource, port, num);
+        break;
+    case TIMEOUT:
+        do_timeout_test(addr, resource, port);
+        break;
     }
 
     exit(0);
