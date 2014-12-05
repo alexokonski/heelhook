@@ -170,13 +170,13 @@ int main(int argc, char** argv)
 
         .endp_settings =
         {
-            .protocol_buf_init_len = 4 * 1024,
             .conn_settings =
             {
                 .write_max_frame_size = 20 * 1024 * 1024,
                 .read_max_msg_size = 20 * 1024 * 1024,
                 .read_max_num_frames = 20 * 1024 * 1024,
                 .max_handshake_size = 2048,
+                .init_buf_len = 4 * 1024,
                 .rand_func = NULL
             }
         }

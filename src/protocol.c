@@ -630,13 +630,12 @@ protocol_parse_frame_hdr(protocol_conn* conn, bool expect_mask,
     return PROTOCOL_RESULT_FRAME_FINISHED;
 }
 
-/* create a protocol_conn on the heap, init buffers to init_buf_len bytes */
-protocol_conn* protocol_create_conn(protocol_settings* settings,
-                                    size_t init_buf_len, void* userdata)
+/* create a protocol_conn on the heap */
+protocol_conn* protocol_create_conn(protocol_settings* settings, void* userdata)
 {
     protocol_conn* conn = hhmalloc(sizeof(*conn));
     if (conn == NULL ||
-        protocol_init_conn(conn, settings, init_buf_len, userdata) < 0)
+        protocol_init_conn(conn, settings, userdata) < 0)
     {
         if (conn != NULL && conn->info.headers != NULL)
         {
@@ -665,8 +664,9 @@ protocol_conn* protocol_create_conn(protocol_settings* settings,
  * write buffers
 */
 int protocol_init_conn(protocol_conn* conn, protocol_settings* settings,
-                       size_t init_buf_len, void* userdata)
+                       void* userdata)
 {
+    size_t init_buf_len = settings->init_buf_len;
     memset(conn, 0, sizeof(*conn));
     conn->settings = settings;
     conn->state = PROTOCOL_STATE_READ_HANDSHAKE;

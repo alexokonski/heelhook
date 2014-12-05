@@ -295,9 +295,10 @@ int main(int argc, char** argv)
     settings.read_max_msg_size = 65537;
     settings.read_max_num_frames = 1024;
     settings.max_handshake_size = 2048;
+    settings.init_buf_len = 20;
     settings.rand_func = test_random;
     protocol_conn* conn =
-        protocol_create_conn(&settings, 20, NULL);
+        protocol_create_conn(&settings, NULL);
     darray_append(&conn->info.buffer, buffer, num_written);
     protocol_result r;
     protocol_handshake_result hr;
@@ -497,7 +498,8 @@ int main(int argc, char** argv)
 
     protocol_destroy_conn(conn);
 
-    conn = protocol_create_conn(&settings, 256, NULL);
+    settings.init_buf_len = 256;
+    conn = protocol_create_conn(&settings, NULL);
     g_index = (uint32_t*)g_nonce;
     hr = protocol_write_handshake_request(
         conn,
@@ -527,7 +529,7 @@ int main(int argc, char** argv)
 
 
     settings.write_max_frame_size = 1024;
-    conn = protocol_create_conn(&settings, 256, NULL);
+    conn = protocol_create_conn(&settings, NULL);
     darray_clear(conn->info.buffer);
     darray_append(
         &conn->info.buffer,

@@ -528,12 +528,12 @@ static int random_socket_connect(const char* ip_addr, int port,
 static void do_chatserver_test(const char* addr, int port, int num)
 {
     config_client_options options;
-    options.endp_settings.protocol_buf_init_len = 4 * 1024;
 
     protocol_settings* conn_settings = &options.endp_settings.conn_settings;
     conn_settings->write_max_frame_size = 16 * 1024;
     conn_settings->read_max_msg_size = 16 * 1024;
     conn_settings->read_max_num_frames = 20 * 1024 * 1024;
+    conn_settings->init_buf_len = 4 * 1024;
     conn_settings->rand_func = random_callback;
 
     /*client_callbacks chatty_cbs;
@@ -598,12 +598,12 @@ static void do_chatserver_test(const char* addr, int port, int num)
 static void do_autobahn_test(const char* addr, int port, int num)
 {
     config_client_options options;
-    options.endp_settings.protocol_buf_init_len = 4 * 1024;
 
     protocol_settings* conn_settings = &options.endp_settings.conn_settings;
     conn_settings->write_max_frame_size = 20 * 1024 * 1024;
     conn_settings->read_max_msg_size = 20 * 1024 * 1024;
     conn_settings->read_max_num_frames = 20 * 1024 * 1024;
+    conn_settings->init_buf_len = 4 * 1024;
     conn_settings->rand_func = random_callback;
 
     client_callbacks callbacks;
@@ -725,12 +725,12 @@ static void do_mps_test(const char* addr, const char* resource, int port,
                         int num)
 {
     config_client_options options;
-    options.endp_settings.protocol_buf_init_len = 4 * 1024;
 
     protocol_settings* conn_settings = &options.endp_settings.conn_settings;
     conn_settings->write_max_frame_size = 16 * 1024;
     conn_settings->read_max_msg_size = 16 * 1024;
     conn_settings->read_max_num_frames = 20 * 1024 * 1024;
+    conn_settings->init_buf_len = 4 * 1024;
     conn_settings->rand_func = random_callback;
 
     client_callbacks cbs;
@@ -825,12 +825,12 @@ static void timeout_on_close(client* c, int code, const char* reason,
 static void do_timeout_test(const char* addr, const char* resource, int port)
 {
     config_client_options options;
-    options.endp_settings.protocol_buf_init_len = 4 * 1024;
 
     protocol_settings* conn_settings = &options.endp_settings.conn_settings;
     conn_settings->write_max_frame_size = 16 * 1024;
     conn_settings->read_max_msg_size = 16 * 1024;
     conn_settings->read_max_num_frames = 20 * 1024 * 1024;
+    conn_settings->init_buf_len = 4 * 1024;
     conn_settings->rand_func = random_callback;
 
     client_callbacks cbs;

@@ -160,6 +160,9 @@ typedef struct
     /* max size of received handshake (in bytes), -1 is no limit */
     int max_handshake_size;
 
+    /* initial buffer length, also the length that buffers are trimmed to */
+    int64_t init_buf_len;
+
     /*
      * random number generator for creating client frames
      */
@@ -220,18 +223,18 @@ struct protocol_conn
 };
 
 /*
- * create a protocol_conn on the heap, init buffers to init_buf_len bytes
+ * create a protocol_conn on the heap
  * the caller is responsible for the settings object
  */
 protocol_conn* protocol_create_conn(protocol_settings* settings,
-                                    size_t init_buf_len, void* userdata);
+                                    void* userdata);
 
 /*
  * initialize an already allocated protocol_conn. allocates read and
  * write buffers
 */
 int protocol_init_conn(protocol_conn* conn, protocol_settings* settings,
-                       size_t init_buf_len, void* userdata);
+                       void* userdata);
 
 /*
  * free/destroy a protocol_conn

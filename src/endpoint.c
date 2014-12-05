@@ -51,6 +51,19 @@
 
 static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg);
 
+/*
+ * If a buffer has double the memory reserved than its size, give that memory
+ * back to the system
+ */
+static void trim_buffer(darray** buf, size_t min_size_reserved)
+{
+    if ((darray_get_size_reserved(*buf) > 2 * darray_get_len(*buf)) &&
+        darray_get_size_reserved(*buf) > min_size_reserved)
+    {
+        darray_trim_reserved(buf, min_size_reserved);
+    }
+}
+
 static void deactivate_conn(endpoint* conn)
 {
     if (conn->callbacks->on_close != NULL)
@@ -60,6 +73,15 @@ static void deactivate_conn(endpoint* conn)
                                   conn->pconn.error_len,
                                   conn->userdata);
     }
+
+    size_t min_size_reserved = conn->pconn.settings->init_buf_len;
+
+    /* release memory back to the system */
+    darray_clear(conn->pconn.read_buffer);
+    darray_trim_reserved(&conn->pconn.read_buffer, min_size_reserved);
+
+    darray_clear(conn->pconn.write_buffer);
+    darray_trim_reserved(&conn->pconn.write_buffer, min_size_reserved);
 }
 
 endpoint_write_result endpoint_write(endpoint* conn, int fd)
@@ -135,6 +157,10 @@ endpoint_write_result endpoint_write(endpoint* conn, int fd)
          */
         darray_slice(pconn->write_buffer, conn->write_pos, -1);
         conn->write_pos = 0;
+
+        /* release some memory back, if necessary */
+        size_t min_size_reserved = conn->pconn.settings->init_buf_len;
+        trim_buffer(&conn->pconn.write_buffer, min_size_reserved);
     }
 
     return result;
@@ -278,6 +304,11 @@ static parse_result parse_endpoint_messages(endpoint* conn)
     if (r == PROTOCOL_RESULT_MESSAGE_FINISHED && protocol_is_data(msg.type))
     {
         darray_slice(conn->pconn.read_buffer, conn->read_pos, -1);
+
+        /* release some memory back, if necessary */
+        size_t min_size_reserved = conn->pconn.settings->init_buf_len;
+        trim_buffer(&conn->pconn.read_buffer, min_size_reserved);
+
         conn->read_pos = darray_get_len(conn->pconn.read_buffer);
     }
 
@@ -486,8 +517,7 @@ int endpoint_init(endpoint* conn, endpoint_type type,
                   endpoint_callbacks* callbacks, void* userdata)
 {
     conn->type = type;
-    int r = protocol_init_conn(&conn->pconn, &(settings->conn_settings),
-                               settings->protocol_buf_init_len, NULL);
+    int r = protocol_init_conn(&conn->pconn, &(settings->conn_settings), NULL);
     conn->callbacks = callbacks;
     conn->userdata = userdata;
     endpoint_state_clear(conn);

@@ -43,7 +43,6 @@ typedef enum
 
 typedef struct
 {
-    size_t protocol_buf_init_len; /* initial length for read/write buffers */
     protocol_settings conn_settings; /* settings for a connection */
 } endpoint_settings;
 
