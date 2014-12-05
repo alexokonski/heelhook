@@ -79,6 +79,14 @@ void darray_clear(darray* array);
 void darray_slice(darray* array, size_t start, ssize_t end);
 
 /*
+ * Trim the reserved space down to min_elems_reserved or the result of
+ * darray_get_len, whicever is larger
+ *
+ * returns the new data pointer for the array (darray_get_data)
+ */
+void* darray_trim_reserved(darray** array, size_t min_elems_reserved);
+
+/*
  * ensure the darray has room for this many additional elements. usage:
  *
  * darray_ensure(&my_array, 10);

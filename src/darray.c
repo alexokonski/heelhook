@@ -159,6 +159,26 @@ void darray_slice(darray* array, size_t start, ssize_t end)
 }
 
 /*
+ * Trim the reserved space down to num_elems or the result of darray_get_len,
+ * whicever is larger
+ */
+void* darray_trim_reserved(darray** array, size_t min_elems_resesrved)
+{
+    darray* arr = *array;
+    size_t new_reserved = hhmax(min_elems_resesrved, darray_get_len(*array));
+    size_t new_size =
+        (arr->elem_size * (new_reserved)) + sizeof(darray);
+
+    arr = hhrealloc(arr, new_size);
+    (*array) = arr;
+    if (arr == NULL) return NULL;
+
+    arr->size_reserved = new_reserved;
+
+    return arr->data;
+}
+
+/*
  * ensure the darray has room for this many additional elements. usage:
  *
  * darray_ensure(&my_array, 10);
