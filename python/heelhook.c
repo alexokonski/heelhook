@@ -338,13 +338,13 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
         .handshake_timeout_ms = handshake_timeout_ms,
         .endp_settings =
         {
-            .protocol_buf_init_len = init_buffer_len,
             .conn_settings =
             {
                 .write_max_frame_size = write_max_frame_size,
                 .read_max_msg_size = read_max_msg_size,
                 .read_max_num_frames = read_max_num_frames,
                 .max_handshake_size = max_handshake_size,
+                .init_buf_len = init_buffer_len,
                 .rand_func = NULL
             }
         },
