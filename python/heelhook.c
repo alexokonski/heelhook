@@ -319,15 +319,6 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
     self->conn_class = connection_class;
     Py_XDECREF(tmp);
 
-    /*tmp = self->connections;
-    self->connections = PySet_New(NULL);
-    Py_XDECREF(tmp);
-
-    if (self->connections == NULL)
-    {
-        return -1;
-    }*/
-
     config_server_options opts =
     {
         .bindaddr = bindaddr,
@@ -421,6 +412,7 @@ ServerConn_on_message(hh_ServerConnObj* self, PyObject* args, PyObject* kwargs)
 static PyObject*
 ServerConn_on_ping(hh_ServerConnObj* self, PyObject* args, PyObject* kwargs)
 {
+    ServerConn_send_pong(self, args, kwargs);
     Py_RETURN_NONE;
 }
 
