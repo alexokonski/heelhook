@@ -66,6 +66,8 @@ static void trim_buffer(darray** buf, size_t min_size_reserved)
 
 static void deactivate_conn(endpoint* conn)
 {
+    size_t min_size_reserved = conn->pconn.settings->init_buf_len;
+
     if (conn->callbacks->on_close != NULL)
     {
         conn->callbacks->on_close(conn, conn->pconn.error_code,
@@ -74,14 +76,16 @@ static void deactivate_conn(endpoint* conn)
                                   conn->userdata);
     }
 
-    size_t min_size_reserved = conn->pconn.settings->init_buf_len;
+    /* It's possible the on_close callback called endpoint_reset */
+    if (conn->pconn.read_buffer != NULL && conn->pconn.write_buffer != NULL)
+    {
+        /* release memory back to the system */
+        darray_clear(conn->pconn.read_buffer);
+        darray_trim_reserved(&conn->pconn.read_buffer, min_size_reserved);
 
-    /* release memory back to the system */
-    darray_clear(conn->pconn.read_buffer);
-    darray_trim_reserved(&conn->pconn.read_buffer, min_size_reserved);
-
-    darray_clear(conn->pconn.write_buffer);
-    darray_trim_reserved(&conn->pconn.write_buffer, min_size_reserved);
+        darray_clear(conn->pconn.write_buffer);
+        darray_trim_reserved(&conn->pconn.write_buffer, min_size_reserved);
+    }
 }
 
 endpoint_write_result endpoint_write(endpoint* conn, int fd)

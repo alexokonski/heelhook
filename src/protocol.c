@@ -714,9 +714,13 @@ void protocol_deinit_conn(protocol_conn* conn)
     }
 
     darray_destroy(conn->info.headers);
+    conn->info.headers = NULL;
     darray_destroy(conn->info.buffer);
+    conn->info.buffer = NULL;
     darray_destroy(conn->read_buffer);
+    conn->read_buffer = NULL;
     darray_destroy(conn->write_buffer);
+    conn->write_buffer = NULL;
 }
 
 /*
