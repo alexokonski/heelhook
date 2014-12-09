@@ -88,6 +88,10 @@ static void client_on_ping_callback(endpoint* conn_info, char* payload,
     {
         c->cbs->on_ping(c, payload, payload_len, c->userdata);
     }
+    else
+    {
+        client_send_pong(c, payload, payload_len);
+    }
 }
 
 static void client_on_pong_callback(endpoint* conn_info, char* payload,

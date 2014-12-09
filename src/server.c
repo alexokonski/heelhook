@@ -262,6 +262,10 @@ static void server_on_ping_callback(endpoint* conn_info, char* payload,
     {
         serv->cbs.on_ping(conn, payload, payload_len, serv->userdata);
     }
+    else
+    {
+        server_conn_send_pong(conn, payload, payload_len);
+    }
 }
 
 static void server_on_pong_callback(endpoint* conn_info, char* payload,
