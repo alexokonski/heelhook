@@ -269,7 +269,8 @@ protocol_handshake_result
 protocol_write_handshake_response(
     protocol_conn* conn,
     const char* protocol, /* (optional) */
-    const char** extensions /* NULL terminated (optional) */
+    const char** extensions, /* NULL terminated (optional) */
+    int fd /* optional, used for 0-copy write optimization, set -1 for no fd */
 );
 
 /*
@@ -390,18 +391,20 @@ protocol_read_server_msg(protocol_conn* conn, size_t* start_pos,
                          protocol_msg* read_msg);
 
 /*
- * write write_msg to conn->write_buffer.  must be called after
- * protocol_read_handshake_request.
+ * write write_msg to conn->write_buffer, or fd.  must be called after
+ * protocol_read_handshake_request. If fd != -1, will try to write data
+ * directly to fd without buferring
  */
 protocol_result
-protocol_write_server_msg(protocol_conn* conn, protocol_msg* write_msg);
+protocol_write_server_msg(protocol_conn* conn, protocol_msg* write_msg, int fd);
 
 /*
- * write write_msg to conn->write_buffer.  must be called after
- * protocol_read_handshake_request.
+ * write write_msg to conn->write_buffer, or fd.  must be called after
+ * protocol_read_handshake_request. If fd != -1, will try to write data
+ * directly to fd without buferring
  */
 protocol_result
-protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg);
+protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg, int fd);
 
 /* Convienence functions */
 bool protocol_is_data(protocol_msg_type msg_type);

@@ -47,8 +47,11 @@
 #include <limits.h>
 #include <inttypes.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <linux/socket.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -243,9 +246,14 @@ static void deactivate_conn(server* serv, server_conn* conn)
 static iloop_result queue_write(server_conn* conn)
 {
     /* queue up writing response back */
-    iloop_result er;
-    iloop* loop = &conn->serv->loop;
-    er = loop->add_io(loop, conn->fd, ILOOP_WRITEABLE, ILOOP_WRITE_CB, conn);
+    iloop_result er = ILOOP_SUCCESS;
+
+    if (darray_get_len(conn->endp.pconn.write_buffer) > 0 ||
+        conn->endp.close_send_pending)
+    {
+        iloop* loop = &conn->serv->loop;
+        er = loop->add_io(loop,conn->fd,ILOOP_WRITEABLE,ILOOP_WRITE_CB,conn);
+    }
 
     return er;
 }
@@ -412,7 +420,8 @@ server_on_connect_callback(endpoint* conn_info,
     }
 
     endpoint_result r;
-    r = endpoint_send_handshake_response(&conn->endp, subprotocol, extensions);
+    r = endpoint_send_handshake_response(&conn->endp, subprotocol, extensions,
+                                         conn->fd);
 
     if (r != ENDPOINT_RESULT_SUCCESS)
     {
@@ -519,6 +528,21 @@ static void accept_callback(iloop* loop, int fd, void* data)
     {
         hhlog(HHLOG_LEVEL_ERROR, "-1 fd when accepting socket, fd: %d",
                   fd);
+        return;
+    }
+
+    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) == -1)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "fcntl failed on socket: %s",
+              strerror(errno));
+        return;
+    }
+
+    int one = 1;
+    if (setsockopt(client_fd, SOL_TCP, TCP_NODELAY, &one, sizeof(one)) == -1)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "setsockopt failed on socket: %s",
+              strerror(errno));
         return;
     }
 
@@ -795,7 +819,7 @@ static server_result endpoint_result_to_server_result(endpoint_result r)
 /* queue up a message to send on this connection */
 server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 {
-    endpoint_result r = endpoint_send_msg(&conn->endp, msg);
+    endpoint_result r = endpoint_send_msg(&conn->endp, msg, conn->fd);
 
     iloop_result ir = queue_write(conn);
     if (ir != ILOOP_SUCCESS)
@@ -811,7 +835,8 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 server_result server_conn_send_ping(server_conn* conn, char* payload, int
                                     payload_len)
 {
-    endpoint_result r = endpoint_send_ping(&conn->endp, payload, payload_len);
+    endpoint_result r =
+        endpoint_send_ping(&conn->endp, payload, payload_len, conn->fd);
 
     iloop_result ir = queue_write(conn);
     if (ir != ILOOP_SUCCESS)
@@ -827,7 +852,8 @@ server_result server_conn_send_ping(server_conn* conn, char* payload, int
 server_result server_conn_send_pong(server_conn* conn, char* payload, int
                                     payload_len)
 {
-    endpoint_result r = endpoint_send_pong(&conn->endp, payload, payload_len);
+    endpoint_result r =
+        endpoint_send_pong(&conn->endp, payload, payload_len, conn->fd);
 
     iloop_result ir = queue_write(conn);
     if (ir != ILOOP_SUCCESS)
@@ -846,7 +872,8 @@ server_result server_conn_send_pong(server_conn* conn, char* payload, int
 server_result server_conn_close(server_conn* conn, uint16_t code,
                                 const char* reason, int reason_len)
 {
-    endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
+    endpoint_result r =
+        endpoint_close(&conn->endp, code, reason, reason_len, conn->fd);
 
     iloop_result ir = queue_write(conn);
     if (ir != ILOOP_SUCCESS)

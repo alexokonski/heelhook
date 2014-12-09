@@ -215,8 +215,8 @@ static void test_frame_write(
     msg.type = PROTOCOL_MSG_TEXT;
     msg.data = out_message;
     msg.msg_len = sizeof(out_message) - 1;
-    protocol_result r = (is_client) ? protocol_write_client_msg(conn, &msg)
-                                    : protocol_write_server_msg(conn, &msg);
+    protocol_result r = (is_client) ? protocol_write_client_msg(conn, &msg, -1)
+                                    : protocol_write_server_msg(conn, &msg, -1);
 
     if (r != PROTOCOL_RESULT_MESSAGE_FINISHED)
     {
@@ -312,7 +312,7 @@ int main(int argc, char** argv)
     compare_headers(conn, "TEST READ_HANDSHAKE");
 
     static const char* extensions[] = {"ext1", "ext2", NULL};
-    if ((hr = protocol_write_handshake_response(conn, "chat", extensions))
+    if ((hr = protocol_write_handshake_response(conn, "chat", extensions, -1))
             != PROTOCOL_HANDSHAKE_SUCCESS)
     {
         printf("FAIL WRITING HANDSHAKE: %d\n", hr);

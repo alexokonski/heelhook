@@ -161,7 +161,8 @@ endpoint_result
 endpoint_send_handshake_response(
         endpoint* conn,
         const char* protocol, /* (optional) */
-        const char** extensions /* NULL terminated (optional) */
+        const char** extensions, /* NULL terminated (optional) */
+        int fd /* may be used directly as an optimization */
 );
 
 /* send a handshake request (only applies to client endpoints) */
@@ -176,15 +177,15 @@ endpoint_send_handshake_request(
 );
 
 /* queue up a message to send on this connection */
-endpoint_result endpoint_send_msg(endpoint* conn, endpoint_msg* msg);
+endpoint_result endpoint_send_msg(endpoint* conn, endpoint_msg* msg, int fd);
 
 /* send a ping with payload (NULL for no payload)*/
 endpoint_result
-endpoint_send_ping(endpoint* conn, char* payload, int payload_len);
+endpoint_send_ping(endpoint* conn, char* payload, int payload_len, int fd);
 
 /* send a pong with payload (NULL for no payload)*/
 endpoint_result
-endpoint_send_pong(endpoint* conn, char* payload, int payload_len);
+endpoint_send_pong(endpoint* conn, char* payload, int payload_len, int fd);
 
 /*
  * close this connection. sends a close message with the error
@@ -192,7 +193,7 @@ endpoint_send_pong(endpoint* conn, char* payload, int payload_len);
  */
 endpoint_result
 endpoint_close(endpoint* conn, uint16_t code, const char* reason,
-               int reason_len);
+               int reason_len, int fd);
 
 /*
  * write data from endpoint to a ready socket

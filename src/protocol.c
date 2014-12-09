@@ -37,6 +37,7 @@
 #include "util.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -74,6 +75,7 @@ static bool is_valid_opcode(protocol_opcode opcode)
     }
 }
 
+#ifdef DEBUG
 static bool multiple_frames_allowed(protocol_opcode opcode)
 {
     switch (opcode)
@@ -90,6 +92,7 @@ static bool multiple_frames_allowed(protocol_opcode opcode)
             return 0;
     }
 }
+#endif
 
 static protocol_msg_type msg_type_from_opcode(protocol_opcode opcode)
 {
@@ -839,6 +842,78 @@ read_err:
     return PROTOCOL_HANDSHAKE_FAIL;
 }
 
+static HH_INLINE ssize_t
+protocol_write(protocol_conn* conn, int fd, char* buf, size_t len,
+               char* mask_key)
+{
+    int num_written = 0;
+    if (darray_get_len(conn->write_buffer) == 0 &&
+        mask_key == NULL &&
+        fd != -1)
+    {
+        /*
+         * if there's nothing on the write buffer already,
+         * try to write directly to the socket
+         */
+        num_written = write(fd, buf, len);
+
+        if (num_written < 0)
+        {
+            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                /*
+                 * An error occured that wasn't just 'would block'.
+                 * we have to bail on this entire connection
+                 */
+                return -1;
+            }
+            else
+            {
+                /*
+                 * A 'would block' error occured, continue to below and write
+                 * to the write_buffer
+                 */
+                num_written = 0;
+            }
+        }
+        else if ((size_t)num_written == len)
+        {
+            /* all was written, return */
+            return num_written;
+        }
+        else
+        {
+            /*
+             * a partial write occured, update our variables and write the
+             * rest to the write_buffer below
+             */
+            buf += num_written;
+            len -= num_written;
+        }
+    }
+
+    /* make sure there is enough room */
+    char* data = darray_ensure(&conn->write_buffer, len);
+
+    /* get the data */
+    data = &data[darray_get_len(conn->write_buffer)];
+
+    if (mask_key == NULL)
+    {
+        /* copy the data */
+        memcpy(data, buf, len);
+    }
+    else
+    {
+        mask_and_move_data(data, buf, len, mask_key, 0, false, NULL, NULL);
+    }
+
+    /* update length */
+    darray_add_len(conn->write_buffer, len);
+
+    return num_written + len;
+}
+
 /*
  * parse the handshake from conn->info.buffer. On success, advances state from
  * PROTOCOL_STATE_READ_HANDSHAKE -> PROTOCOL_STATE_WRITE_HANDSHAKE
@@ -855,7 +930,7 @@ protocol_handshake_result protocol_read_handshake_request(protocol_conn* conn)
  */
 protocol_handshake_result
 protocol_write_handshake_response(protocol_conn* conn, const char* protocol,
-                                  const char** extensions)
+                                  const char** extensions, int fd)
 {
     hhassert(conn->state == PROTOCOL_STATE_WRITE_HANDSHAKE);
 
@@ -950,7 +1025,13 @@ protocol_write_handshake_response(protocol_conn* conn, const char* protocol,
         }
     }
 
-    char* buf = darray_ensure(&conn->write_buffer, total_len);
+    char static_buf[4096];
+    char* buf = static_buf;
+
+    if (total_len > sizeof(static_buf))
+    {
+        buf = hhmalloc(total_len);
+    }
 
     /* write out the mandatory stuff */
     num_written = 0;
@@ -986,9 +1067,16 @@ protocol_write_handshake_response(protocol_conn* conn, const char* protocol,
      * written exactly total_len - 1 num
      */
     hhassert((unsigned)num_written == (total_len - 1));
-    darray_add_len(conn->write_buffer, total_len - 1);
+
+    ssize_t r = protocol_write(conn, fd, buf, num_written, NULL);
+    if (r < 0) return PROTOCOL_HANDSHAKE_FAIL;
 
     conn->state = PROTOCOL_STATE_CONNECTED;
+
+    if (total_len > sizeof(static_buf))
+    {
+        hhfree(buf);
+    }
 
     return PROTOCOL_HANDSHAKE_SUCCESS;
 }
@@ -1574,9 +1662,10 @@ protocol_read_server_msg(protocol_conn* conn, size_t* start_pos,
     return protocol_read_msg(conn, start_pos, false, read_msg);
 }
 
+
 static protocol_result
 protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
-                   protocol_endpoint type)
+                   protocol_endpoint type, int fd)
 {
     protocol_msg_type msg_type = write_msg->type;
     int64_t msg_len = write_msg->msg_len;
@@ -1586,47 +1675,36 @@ protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
 
     protocol_opcode opcode = opcode_from_msg_type(msg_type);
 
-    /* please provide valid inputs... */
-    if (msg_len < 0)
-    {
-        return PROTOCOL_RESULT_FAIL;
-    }
-
-    if (msg_len > max_frame_size && !multiple_frames_allowed(opcode))
-    {
-        return PROTOCOL_RESULT_FAIL;
-    }
+    hhassert(msg_len >= 0);
+    hhassert(msg_len <= max_frame_size || multiple_frames_allowed(opcode));
 
     int64_t num_written = 0;
     int64_t payload_num_written = 0;
+    ssize_t r = 0;
     unsigned num_mask_bytes = (type == PROTOCOL_ENDPOINT_SERVER) ? 0 : 4;
     do
     {
         int64_t num_remaining = msg_len - payload_num_written;
         int64_t payload_len = hhmin(num_remaining, max_frame_size);
         int num_extra_len_bytes = get_num_extra_len_bytes(payload_len);
-        int64_t total_frame_len =
-            2 + (int)num_mask_bytes + num_extra_len_bytes + payload_len;
+        int num_header_bytes = 2 + (int)num_mask_bytes + num_extra_len_bytes;
+        int64_t total_frame_len = num_header_bytes + payload_len;
 
         hhassert(total_frame_len >= 0);
-        /* make sure there is enough room for this frame */
-        char* data = darray_ensure(&conn->write_buffer,
-                                   (size_t)total_frame_len);
-
-        /* get the data */
-        data = &data[darray_get_len(conn->write_buffer)];
-        const char* start_data = data;
 
         /* determine if this is the fin frame */
         unsigned char first_byte_mask =
             ((num_written + payload_len) >= msg_len) ? 0x80 : 0x00;
 
-        /* write the first byte to the buffer */
-        *data = (char)(first_byte_mask | (unsigned char)opcode);
-        data++;
+        /* 2 header bytes + up to 9 len bytes + possible 4 mask bytes */
+        char bytes[2 + 9 + 4];
+        char* cur = bytes;
 
-        /* set the mask bit if appropriate */
-        *data = (char)((type == PROTOCOL_ENDPOINT_CLIENT) ? 0x80 : 0x00);
+        /* determine the first byte in the frame */
+        *cur++ = (char)(first_byte_mask | (unsigned char)opcode);
+
+        /* determine the first bit of the second byte in the frame  */
+        *cur = (char)((type == PROTOCOL_ENDPOINT_CLIENT) ? 0x80 : 0x00);
 
         /* write the payload length to the buffer */
         uint16_t short_len;
@@ -1634,24 +1712,21 @@ protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
         switch (num_extra_len_bytes)
         {
         case 0:
-            *data |= (char)payload_len; /* |= to avoid blowing away mask bit */
-            data++;
+            *cur++ |= (char)payload_len; /* |= to avoid blowing away mask bit */
             break;
 
         case 2:
-            *data |= 126; /* |= to avoid blowing away mask bit */
-            data++;
+            *cur++ |= 126; /* |= to avoid blowing away mask bit */
             short_len = hh_htons((uint16_t)payload_len);
-            memcpy(data, &short_len, sizeof(uint16_t));
-            data += sizeof(uint16_t);
+            memcpy(cur, &short_len, sizeof(uint16_t));
+            cur += sizeof(uint16_t);
             break;
 
         case 8:
-            *data |= 127; /* |= to avoid blowing away mask bit */
-            data++;
+            *cur++ |= 127; /* |= to avoid blowing away mask bit */
             long_len = hh_htonll((uint64_t)payload_len);
-            memcpy(data, &long_len, sizeof(uint64_t));
-            data += sizeof(uint64_t);
+            memcpy(cur, &long_len, sizeof(uint64_t));
+            cur += sizeof(uint64_t);
             break;
 
         default:
@@ -1669,34 +1744,36 @@ protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
             hhassert(conn->settings->rand_func != NULL);
             val = conn->settings->rand_func(conn);
             hhassert(sizeof(val) == num_mask_bytes);
-            memcpy(data, &val, num_mask_bytes);
-            mask_key = data;
-            data += num_mask_bytes;
+            memcpy(cur, &val, num_mask_bytes);
+            mask_key = cur;
+            cur += num_mask_bytes;
             break;
         }
 
-    #ifdef DEBUG
-        hhassert(start_data+2+num_extra_len_bytes+num_mask_bytes == data);
-    #else
-        hhunused(start_data);
-    #endif
+        hhassert(bytes+2+num_extra_len_bytes+num_mask_bytes == cur);
+        hhassert(cur - bytes == num_header_bytes);
 
-        /* write the payload to the buffer */
+        /* write the frame header */
+        r = protocol_write(conn, fd, bytes, (size_t)num_header_bytes, NULL);
+        if (r < 0) return PROTOCOL_RESULT_FAIL;
+
+        /* write the payload */
         switch (type)
         {
         case PROTOCOL_ENDPOINT_SERVER:
             hhassert(payload_len >= 0);
-            memcpy(data, msg_data, (size_t)payload_len);
+            r = protocol_write(conn, fd, msg_data, (size_t)payload_len, NULL);
+            if (r < 0) return PROTOCOL_RESULT_FAIL;
             break;
         case PROTOCOL_ENDPOINT_CLIENT:
             hhassert(payload_len >= 0);
-            mask_and_move_data(data, msg_data, (size_t)payload_len, mask_key,
-                               0, false, NULL, NULL);
+            r = protocol_write(conn, fd, msg_data, (size_t)payload_len,
+                               mask_key);
+            if (r < 0) return PROTOCOL_RESULT_FAIL;
             break;
         }
 
         /* bookkeeping */
-        darray_add_len(conn->write_buffer, (size_t)total_frame_len);
         msg_data += payload_len;
         payload_num_written += payload_len;
         num_written += total_frame_len;
@@ -1707,23 +1784,25 @@ protocol_write_msg(protocol_conn* conn, protocol_msg* write_msg,
 }
 
 /*
- * put the message in write_msg on conn->write_buffer.
- * msg will be broken up into frames of size write_max_frame_size
+ * write write_msg to conn->write_buffer, or fd.  must be called after
+ * protocol_read_handshake_request. If fd != -1, will try to write data
+ * directly to fd without buferring
  */
 protocol_result
-protocol_write_server_msg(protocol_conn* conn, protocol_msg* write_msg)
+protocol_write_server_msg(protocol_conn* conn, protocol_msg* write_msg, int fd)
 {
-    return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_SERVER);
+    return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_SERVER, fd);
 }
 
 /*
- * write write_msg to conn->write_buffer.  must be called after
- * protocol_read_handshake_request.
+ * write write_msg to conn->write_buffer, or fd.  must be called after
+ * protocol_read_handshake_request. If fd != -1, will try to write data
+ * directly to fd without buferring
  */
 protocol_result
-protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg)
+protocol_write_client_msg(protocol_conn* conn, protocol_msg* write_msg, int fd)
 {
-    return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_CLIENT);
+    return protocol_write_msg(conn, write_msg, PROTOCOL_ENDPOINT_CLIENT, fd);
 }
 
 bool protocol_is_data(protocol_msg_type msg_type)

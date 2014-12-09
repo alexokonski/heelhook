@@ -244,7 +244,7 @@ int client_fd(client* c)
 /* queue up a message to send on this connection */
 client_result client_send_msg(client* conn, endpoint_msg* msg)
 {
-    endpoint_result r = endpoint_send_msg(&conn->endp, msg);
+    endpoint_result r = endpoint_send_msg(&conn->endp, msg, conn->fd);
     return endpoint_result_to_client_result(r);
 }
 
@@ -252,7 +252,8 @@ client_result client_send_msg(client* conn, endpoint_msg* msg)
 client_result
 client_send_ping(client* conn, char* payload, int payload_len)
 {
-    endpoint_result r = endpoint_send_ping(&conn->endp, payload, payload_len);
+    endpoint_result r =
+        endpoint_send_ping(&conn->endp, payload, payload_len, conn->fd);
     return endpoint_result_to_client_result(r);
 }
 
@@ -260,7 +261,8 @@ client_send_ping(client* conn, char* payload, int payload_len)
 client_result
 client_send_pong(client* conn, char* payload, int payload_len)
 {
-    endpoint_result r = endpoint_send_pong(&conn->endp, payload, payload_len);
+    endpoint_result r =
+        endpoint_send_pong(&conn->endp, payload, payload_len, conn->fd);
     return endpoint_result_to_client_result(r);
 }
 
@@ -271,7 +273,8 @@ client_send_pong(client* conn, char* payload, int payload_len)
 client_result client_close(client* conn, uint16_t code,
                                 const char* reason, int reason_len)
 {
-    endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
+    endpoint_result r =
+        endpoint_close(&conn->endp, code, reason, reason_len, conn->fd);
     return endpoint_result_to_client_result(r);
 }
 
