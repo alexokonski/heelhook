@@ -5,10 +5,11 @@ DEBUG= -g -ggdb
 SYMBOL= -D_BSD_SOURCE -D_POSIX_C_SOURCE=199309
 VPATH= test sha1 base64 servers
 EXT_SYMBOL=
+LDFLAGS?= -lrt
 
 FINAL_CFLAGS= $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(EXT_SYMBOL) $(CFLAGS)
 FINAL_LDFLAGS= $(LDFLAGS) -g -ggdb
-TEST_LIBS= -pthread
+TEST_LIBS= -pthread $(FINAL_LDFLAGS)
 ENDPOINT_OBJECTS= hhmemory.o darray.o protocol.o sha1.o cencode.o util.o error_code.o endpoint.o hhlog.o
 HEELHOOK_OBJECTS= $(ENDPOINT_OBJECTS) event.o server.o pqueue.o client.o
 TEST_CC= $(CC) $(TEST_LIBS) -o $@ $^

@@ -193,7 +193,7 @@ static void test_with_data(int* test_data, const int test_data_size)
     if (test_data_size != pqueue_get_size(q))
     {
         printf(
-            "SIZE MISMIATCH %lu %d\n",
+            "SIZE MISMIATCH %zu %d\n",
             hhcountof(test_data),
             pqueue_get_size(q)
         );

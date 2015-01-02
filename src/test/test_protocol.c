@@ -153,7 +153,7 @@ static void compare_headers(protocol_conn* conn, const char* test)
     if (NUM_UNIQUE_HEADERS != darray_get_len(info->headers))
     {
         printf(
-            "%s: HEADER COUNTS DON'T MATCH: %lu, %d\n",
+            "%s: HEADER COUNTS DON'T MATCH: %zu, %d\n",
             test,
             darray_get_len(info->headers),
             NUM_UNIQUE_HEADERS
@@ -238,7 +238,7 @@ static void test_frame_write(
     if (new_len != total_msg_len)
     {
         printf(
-            "%s: WRITE MSG LEN WRONG %lu %lu\n",
+            "%s: WRITE MSG LEN WRONG %zu %zu\n",
             test_str,
             new_len,
             total_msg_len
@@ -323,7 +323,7 @@ int main(int argc, char** argv)
     if (strlen(TEST_RESPONSE) != darray_get_len(conn->write_buffer))
     {
         printf(
-            "LENGTH MISMATCH %lu %lu\n%s\n%s\n",
+            "LENGTH MISMATCH %zu %zu\n%s\n%s\n",
             strlen(TEST_RESPONSE),
             darray_get_len(conn->write_buffer),
             TEST_RESPONSE,

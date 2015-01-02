@@ -30,6 +30,7 @@
 
 #include "../util.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,11 +43,10 @@ int main(int argc, char** argv)
     int test = 1;
     if (*((char*)&test) == 1)
     {
-
         if (longlong != (((uint64_t)1) << 56))
         {
             printf(
-                "BYTE ORDER FAIL LE: %lx, %lx\n",
+                "BYTE ORDER FAIL LE: %" PRIu64 "x, %" PRIu64 "x\n",
                 longlong,
                 (((uint64_t)1) << 63)
             );
@@ -58,7 +58,7 @@ int main(int argc, char** argv)
         if (longlong != 1)
         {
             printf(
-                "BYTE ORDER FAIL BE: %lu, %lu\n",
+                "BYTE ORDER FAIL BE: %" PRIu64 ", %" PRIu64 "\n",
                 longlong,
                 (uint64_t)1
             );
