@@ -218,6 +218,8 @@ static server_conn* activate_conn(server* serv, int client_fd)
 
 static void deactivate_conn(server* serv, server_conn* conn)
 {
+    conn->fd = -1;
+
     /* take this client out of the active list */
     INLIST_REMOVE(serv, conn, next, prev, active_head, active_tail);
 
@@ -325,6 +327,7 @@ static void server_on_close_callback(endpoint* conn_info, int code,
      */
     if (serv->stopping && serv->active_head == NULL && loop->stop != NULL)
     {
+        hhlog(HHLOG_LEVEL_DEBUG, "final client disconnected, stopping");
         loop->stop(loop);
     }
 }
@@ -492,7 +495,7 @@ static void read_from_client_callback(iloop* loop, int fd, void* data)
         ir = queue_write(conn);
         if (ir != ILOOP_SUCCESS)
         {
-            hhlog(HHLOG_LEVEL_ERROR, "send_msg event loop error: %d", ir);
+            hhlog(HHLOG_LEVEL_ERROR, "read_from_client event loop error: %d",ir);
         }
         return;
     case ENDPOINT_READ_ERROR:
@@ -521,6 +524,8 @@ static void accept_callback(iloop* loop, int fd, void* data)
                   fd);
         return;
     }
+
+    hhlog(HHLOG_LEVEL_DEBUG, "client connected, fd: %d", client_fd);
 
     server_conn* conn = activate_conn(serv, client_fd);
     if (conn == NULL)
@@ -795,6 +800,8 @@ static server_result endpoint_result_to_server_result(endpoint_result r)
 /* queue up a message to send on this connection */
 server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 {
+    hhassert(conn->fd != -1);
+
     endpoint_result r = endpoint_send_msg(&conn->endp, msg);
 
     iloop_result ir = queue_write(conn);
@@ -811,6 +818,8 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 server_result server_conn_send_ping(server_conn* conn, char* payload, int
                                     payload_len)
 {
+    hhassert(conn->fd != -1);
+
     endpoint_result r = endpoint_send_ping(&conn->endp, payload, payload_len);
 
     iloop_result ir = queue_write(conn);
@@ -827,6 +836,8 @@ server_result server_conn_send_ping(server_conn* conn, char* payload, int
 server_result server_conn_send_pong(server_conn* conn, char* payload, int
                                     payload_len)
 {
+    hhassert(conn->fd != -1);
+
     endpoint_result r = endpoint_send_pong(&conn->endp, payload, payload_len);
 
     iloop_result ir = queue_write(conn);
@@ -846,6 +857,8 @@ server_result server_conn_send_pong(server_conn* conn, char* payload, int
 server_result server_conn_close(server_conn* conn, uint16_t code,
                                 const char* reason, int reason_len)
 {
+    hhassert(conn->fd != -1);
+
     endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
 
     iloop_result ir = queue_write(conn);
