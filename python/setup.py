@@ -9,14 +9,19 @@ SRC_DIR = os.environ.get('HEELHOOK_SRC', '../src')
 # This is probably totally the wrong way to do this, but I didn't want to
 # duplicate all the compiler options for heelhook in this file. So, just
 # shell out and build heelhook
-class hh_build_ext(build_ext):
+class hhBuildExt(build_ext):
     def build_extension(self, ext):
         cwd = os.getcwd()
         os.chdir(SRC_DIR)
 
+        if self.debug:
+            cmd = 'make debug heelhook_static'
+        else:
+            cmd = 'make heelhook_static'
+
         print
         print 'building heelhook'
-        if os.system('make heelhook_static') != 0:
+        if os.system(cmd) != 0:
             sys.stderr.write('heelhook build failed, aborting\n');
             sys.exit(1)
         os.chdir(cwd)
@@ -47,5 +52,5 @@ setup(
             depends=deps
         )
     ],
-    cmdclass=dict(build_ext=hh_build_ext)
+    cmdclass=dict(build_ext=hhBuildExt)
 )
