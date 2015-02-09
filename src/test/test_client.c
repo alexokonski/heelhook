@@ -30,6 +30,7 @@
  */
 
 #include "../client.h"
+#include "../darray.h"
 #include "../event.h"
 #include "../error_code.h"
 #include "../util.h"
@@ -43,6 +44,7 @@
 #include <signal.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -101,8 +103,26 @@ static void usage(char* exec_name)
 "    messages per second. If a message body is not specified, will send PING\n"
 "    messages, otherwise, it will send the specified message body as a TEXT\n"
 "    message (see --message-body). one_client_mps must be greater than 0 and\n"
-"    less than\n"
-"    or equal to 1000 (default:on with one_client_mps=10)\n"
+"    less than or equal to 1000 (default:on with one_client_mps=10)\n"
+"-i, --interactive\n"
+"   Interactive mode. Each line you type is a message to the server."
+"-f, --script-file\n"
+"   For use with Interactive mode. Allows specifying a 'client script' file.\n"
+"   Example file:\n\n"
+"       # this is a comment\n"
+"       <{\"message\":\"request\"}\n"
+"       >{\"message\":\"response\"}\n"
+"       <{\"message\":\"another request\n}\n"
+"       >*\n\n"
+"   The first character of each line must be either '<','>', or '#', with\n"
+"   meaning as follows:\n"
+"       '#': comment. this line will be ignored\n"
+"       '<': send the string after the '<' on this line to the server as a\n"
+"            text message\n"
+"       '>': the server should respond with a text message exactly equal to the\n"
+"            string after the '>'. If it doesn't, the test client will print a\n"
+"            message describing this and exit. The special sequence '>*' means\n"
+"            that ANY response sent by the server will be allowed\n"
 " -t --timeout\n"
 "    Test heelhook echoserver's handshake/heartbeat timeouts\n"
 "-b <string>, --message-body <string>\n"
@@ -658,14 +678,15 @@ static void
 connect_client(client* c, config_client_options* options,
                client_callbacks* cbs, const char* addr, int port,
                const char* resource, const char* host,
-               const char** extra_headers,event_loop* loop, bool is_mps)
+               const char** extra_headers, void* userdata, event_loop* loop,
+               bool is_mps)
 {
     client_result cr;
     event_result er;
 
     cr = client_connect_raw(c, options, cbs, addr, port, resource,
                             host, NULL, NULL, extra_headers,
-                            loop);
+                            userdata);
     if (cr != CLIENT_RESULT_SUCCESS)
     {
         hhlog(HHLOG_LEVEL_ERROR, "connect fail: %d", cr);
@@ -711,7 +732,8 @@ static void mps_connect_proc(event_loop* loop, event_time_id id, void* data)
 
     /* connect a client */
     connect_client(c, info->options, info->cbs, info->addr, info->port,
-                   info->resource, info->host, info->extra_headers, loop, true);
+                   info->resource, info->host, info->extra_headers, NULL, loop,
+                   true);
     info->num_connected++;
 
     /* if this was the last client, we're done */
@@ -762,7 +784,7 @@ static void do_mps_test(const char* addr, const char* resource, int port,
         {
             client* c = &clients[i];
             connect_client(c, &options, &cbs, addr, port, resource, host,
-                               extra_headers, loop, true);
+                               extra_headers, NULL, loop, true);
         }
     }
     else
@@ -853,7 +875,7 @@ static void do_timeout_test(const char* addr, const char* resource, int port)
     event_loop* loop = event_create_loop(1 + 1024);
 
     connect_client(&c, &options, &cbs, addr, port, resource, host,
-                   extra_headers, loop, false);
+                   extra_headers, NULL, loop, false);
 
     random_socket_connect(addr, port, loop);
 
@@ -861,12 +883,296 @@ static void do_timeout_test(const char* addr, const char* resource, int port)
     event_destroy_loop(loop);
 }
 
+typedef struct
+{
+    darray* buffer;
+    char* expected;
+    size_t expected_size;
+    size_t expected_len;
+    FILE* fp;
+    client* c;
+    event_loop* loop;
+    bool stdin_is_file;
+    bool eof_reached;
+} interactive_stuff;
+
+static void interactive_client_read(event_loop* loop, int fd, void* data)
+{
+    interactive_stuff* stuff = data;
+    client* c = stuff->c;
+
+    size_t read_len = 1024;
+    size_t prev_len = darray_get_len(stuff->buffer);
+
+    char* buf = darray_ensure(&stuff->buffer, read_len + 1);
+    ssize_t num_read = read(fd, &buf[prev_len], read_len - 1);
+    if (num_read == 0)
+    {
+        stuff->eof_reached = true;
+        event_delete_io_event(stuff->loop, fd,
+                EVENT_READABLE | EVENT_WRITEABLE);
+        return;
+    }
+    else if (num_read < 0)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "read error: %s (%d)", strerror(errno), errno);
+        exit(1);
+    }
+
+    buf[prev_len + num_read] = '\0';
+    darray_add_len(stuff->buffer, num_read);
+
+    char* newline;
+    if ((newline = strchr(&buf[prev_len], '\n')) != NULL)
+    {
+        size_t len = newline - buf;
+
+        if (len > 0)
+        {
+            endpoint_msg msg;
+            msg.is_text = true;
+            msg.data = buf;
+            msg.msg_len = len;
+
+            client_result r = client_send_msg(c, &msg);
+            if (r != CLIENT_RESULT_SUCCESS)
+            {
+                hhlog(HHLOG_LEVEL_ERROR,
+                      "could not send interactive client message: %d",
+                      client_fd(c));
+                exit(1);
+            }
+
+            queue_write(c, loop);
+        }
+        darray_slice(stuff->buffer, len + 1, -1);
+    }
+}
+
+static void get_expected(interactive_stuff* stuff)
+{
+    do
+    {
+        ssize_t r = getline(&stuff->expected, &stuff->expected_size, stuff->fp);
+        if (r == -1)
+        {
+            free(stuff->expected);
+            fclose(stuff->fp);
+            stuff->expected = NULL;
+            stuff->expected_size = 0;
+            stuff->expected_len = -1;
+
+            printf("\n*** Script complete, dropping into interactive mode"
+                   " ***\n\n");
+
+            event_result er;
+            er = event_add_io_event(stuff->loop, STDIN_FILENO, EVENT_READABLE,
+                    interactive_client_read, stuff);
+            if (er != EVENT_RESULT_SUCCESS)
+            {
+                hhlog(HHLOG_LEVEL_ERROR, "add io event failed: %d", er);
+                exit(1);
+            }
+            return;
+        }
+        else if (r < 1 || (stuff->expected[0] != '<' &&
+                           stuff->expected[0] != '>' &&
+                           stuff->expected[0] != '#'))
+        {
+            fprintf(stderr, "Invalid script line: %s\n", stuff->expected);
+            exit(1);
+        }
+        else
+        {
+            stuff->expected_len = r;
+            if (stuff->expected[stuff->expected_len-1] == '\n')
+            {
+                stuff->expected[stuff->expected_len - 1] = '\0';
+                stuff->expected_len--;
+            }
+        }
+    } while (stuff->expected[0] == '#');
+}
+
+static void send_script_messages(client* c, interactive_stuff* stuff)
+{
+    bool sent = false;
+    while (stuff->expected != NULL &&
+          stuff->expected_len >= 2 &&
+          stuff->expected[0] == '<')
+    {
+        sent = true;
+        endpoint_msg msg;
+        msg.is_text = true;
+        msg.data = &stuff->expected[1];
+        msg.msg_len = strlen(&stuff->expected[1]);
+
+        printf("%s\n", &stuff->expected[1]);
+        client_send_msg(c, &msg);
+
+        get_expected(stuff);
+    }
+
+    if (sent) queue_write(c, stuff->loop);
+}
+
+bool interactive_on_open(client* c, void* userdata)
+{
+    interactive_stuff* stuff = userdata;
+
+    struct stat buf;
+    int r = fstat(STDIN_FILENO, &buf);
+    if (r < 0)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "stat failed: %s (%d)", strerror(errno),
+              errno);
+        exit(1);
+    }
+
+    /* regular files can't be added to epoll */
+    if (S_ISREG(buf.st_mode))
+    {
+        while (!stuff->eof_reached)
+        {
+            interactive_client_read(stuff->loop, STDIN_FILENO, stuff);
+        }
+    }
+    else
+    {
+        event_result er;
+        er = event_add_io_event(stuff->loop, STDIN_FILENO, EVENT_READABLE,
+                                interactive_client_read, stuff);
+        if (er != EVENT_RESULT_SUCCESS)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "add io event failed: %d (%s (%d))",
+                  er, strerror(errno), errno);
+            exit(1);
+        }
+    }
+
+    if (stuff->expected != NULL && stuff->expected[0] == '<')
+    {
+        send_script_messages(c, stuff);
+    }
+
+    return true;
+}
+
+static void interactive_on_message(client* c, endpoint_msg* msg, void* userdata)
+{
+    interactive_stuff* stuff = userdata;
+    printf("[m]===> %.*s\n", (int)msg->msg_len, msg->data);
+
+    if (stuff->expected == NULL || stuff->expected_len < 2)
+    {
+        return;
+    }
+
+    if (stuff->expected[0] != '>')
+    {
+        printf("*** RECEIVED MESSAGE WHILE SENDING. SENDING: %s ***\n",
+               stuff->expected);
+    }
+
+    if (stuff->expected[1] != '*')
+    {
+        /* - 1 for leading char */
+        if (msg->msg_len < 0 || stuff->expected_len-1 != (size_t)msg->msg_len)
+        {
+            printf("*** SCRIPT LEN FAIL. EXPECTED: %zu (%s). GOT: %zi ***\n",
+                    stuff->expected_len, &stuff->expected[1], msg->msg_len);
+            exit(1);
+        }
+
+        if (memcmp(msg->data, &stuff->expected[1], msg->msg_len) != 0)
+        {
+            printf("*** SCRIPT CONTENTS FAIL. EXPECTED: '%s'.\n",
+                    &stuff->expected[1]);
+            exit(1);
+        }
+    }
+
+    get_expected(stuff);
+    send_script_messages(c, stuff);
+}
+
+static void interactive_on_close(client* c, int code, const char* reason,
+                                 int reason_len, void* userdata)
+{
+    hhunused(c);
+    hhunused(userdata);
+
+    printf("[c]===> (%d) %.*s\n", code, (int)reason_len, reason);
+    exit(0);
+}
+
+static void
+do_interactive_test(const char* addr, const char* resource, int port,
+                    const char* filename)
+{
+    config_client_options options;
+
+    protocol_settings* conn_settings = &options.endp_settings.conn_settings;
+    conn_settings->write_max_frame_size = 16 * 1024;
+    conn_settings->read_max_msg_size = 16 * 1024;
+    conn_settings->read_max_num_frames = 20 * 1024 * 1024;
+    conn_settings->init_buf_len = 4 * 1024;
+    conn_settings->rand_func = random_callback;
+
+    client_callbacks cbs;
+    cbs.on_open = interactive_on_open;
+    cbs.on_message = interactive_on_message;
+    cbs.on_ping = NULL;
+    cbs.on_pong = NULL;
+    cbs.on_close = interactive_on_close;
+
+    static const char* extra_headers[] =
+    {
+        "Origin", "localhost",
+        NULL
+    };
+
+    char host[1024];
+    snprintf(host, sizeof(host), "%s:%d", addr, port);
+
+    client c;
+    event_loop* loop = event_create_loop(1 + 1024);
+
+    interactive_stuff stuff =
+    {
+        .buffer = darray_create(1, 1024),
+        .c = &c,
+        .loop = loop
+    };
+
+    if (filename != NULL)
+    {
+        stuff.fp = fopen(filename, "r");
+        if (stuff.fp == NULL)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "open file failed: %s (%d)",
+                  strerror(errno), errno);
+            exit(1);
+        }
+        get_expected(&stuff);
+    }
+
+    connect_client(&c, &options, &cbs, addr, port, resource, host,
+                   extra_headers, &stuff, loop, false);
+
+    event_pump_events(loop, 0);
+    event_destroy_loop(loop);
+
+    darray_destroy(stuff.buffer);
+}
+
 typedef enum
 {
     AUTOBAHN,
     CHATSERVER,
     MPS,
-    TIMEOUT
+    TIMEOUT,
+    INTERACTIVE
 } client_mode;
 
 int main(int argc, char** argv)
@@ -877,6 +1183,7 @@ int main(int argc, char** argv)
     const char* mps_str = "10";
     const char* resource = "/";
     const char* sleep_str = "0";
+    const char* script_str = NULL;
     bool debug = false;
     client_mode mode = MPS;
 
@@ -888,8 +1195,10 @@ int main(int argc, char** argv)
         { "resource"    , required_argument, NULL, 'r'},
         { "autobahn"    , no_argument      , NULL, 'u'},
         { "chatserver"  , no_argument      , NULL, 'c'},
-        { "mps_bench"   , required_argument, NULL, 'm'},
+        { "interactive" , no_argument      , NULL, 'i'},
+        { "script-file" , required_argument, NULL, 'f'},
         { "timeout"     , no_argument      , NULL, 't'},
+        { "mps_bench"   , required_argument, NULL, 'm'},
         { "num"         , required_argument, NULL, 'n'},
         { "message-body", required_argument, NULL, 'b'},
         { "rampup-sleep", required_argument, NULL, 's'},
@@ -900,7 +1209,7 @@ int main(int argc, char** argv)
     while (1)
     {
         int option_index = 0;
-        int c = getopt_long(argc, argv, "ucda:p:n:m:b:r:s:", long_options,
+        int c = getopt_long(argc, argv, "ucdia:p:n:m:b:r:s:f:", long_options,
                             &option_index);
         if (c == -1)
         {
@@ -912,47 +1221,42 @@ int main(int argc, char** argv)
         case 'd':
             debug = true;
             break;
-
         case 'a':
             addr = optarg;
             break;
-
         case 'p':
             port_str = optarg;
             break;
-
         case 'u':
             mode = AUTOBAHN;
             break;
-
         case 'c':
             mode = CHATSERVER;
             break;
-
         case 'n':
             num_str = optarg;
             break;
-
         case 'm':
             mps_str = optarg;
             break;
-
         case 'b':
             g_body = optarg;
             break;
-
         case 'r':
             resource = optarg;
             break;
-
         case 's':
             sleep_str = optarg;
             break;
-
+        case 'i':
+            mode = INTERACTIVE;
+            break;
         case 't':
             mode = TIMEOUT;
             break;
-
+        case 'f':
+            script_str = optarg;
+            break;
         case '?':
         default:
             error_occurred = true;
@@ -1016,6 +1320,9 @@ int main(int argc, char** argv)
         break;
     case TIMEOUT:
         do_timeout_test(addr, resource, port);
+        break;
+    case INTERACTIVE:
+        do_interactive_test(addr, resource, port, script_str);
         break;
     }
 
