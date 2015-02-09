@@ -8,8 +8,9 @@
 
 /* Core heelhook server library include */
 #include "server.h"
+#include "hhlog.h"
 
-#define MOD_HEELHOOK "heelhook"
+#define MOD_HEELHOOK "_heelhook"
 #define HEELHOOK_VERSION "0.0" /* trololo */
 
 static PyObject* g_HeelhookError = NULL;
@@ -41,6 +42,15 @@ static server_callbacks g_callbacks =
     .on_pong = (server_on_pong*)on_pong,
     .on_close = (server_on_close*)on_close,
     .should_stop = (server_should_stop*)should_stop
+};
+
+static hhlog_options g_log_options =
+{
+    .loglevel = HHLOG_LEVEL_INFO,
+    .syslogident = NULL,
+    .logfilepath = NULL,
+    .log_to_stdout = true,
+    .log_location = true
 };
 
 struct hh_ServerObj
@@ -193,7 +203,7 @@ static PyMethodDef hh_ServerConnMethods[] =
         METH_VARARGS | METH_KEYWORDS, ServerConn_send_pong__doc__ },
 
     { "send_close", (PyCFunction)ServerConn_send_close,
-        METH_NOARGS, ServerConn_send_close__doc__ },
+        METH_VARARGS | METH_KEYWORDS, ServerConn_send_close__doc__ },
 
     { "get_resource", (PyCFunction)ServerConn_get_resource,
         METH_NOARGS, ServerConn_get_resource__doc__ },
@@ -285,7 +295,7 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
 
     static char* kwlist[] =
     {
-        "bindaddr", "port", "connection_class", "max_clients",
+        "bindaddr", "port", "connection_class", "max_clients", "debug",
         "heartbeat_interval_ms", "heartbeat_ttl_ms", "handshake_timeout_ms",
         "init_buffer_len", "write_max_frame_size", "read_max_msg_size",
         "read_max_num_frames", "max_handshake_size",
@@ -296,6 +306,7 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
     int port = 9001;
     PyObject* connection_class = (PyObject*)(&hh_ServerConnType);
     int max_clients = 1024;
+    int debug = 0;
     int heartbeat_interval_ms = 0;
     int heartbeat_ttl_ms = 0;
     int handshake_timeout_ms = 0;
@@ -305,13 +316,18 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
     int read_max_num_frames = -1;
     int max_handshake_size = -1;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|siOiiiiiiiii", kwlist,
-            &bindaddr, &port, &connection_class, &max_clients,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|siOiiiiiiiiii", kwlist,
+            &bindaddr, &port, &connection_class, &max_clients, &debug,
             &heartbeat_interval_ms, &heartbeat_ttl_ms, &handshake_timeout_ms,
             &init_buffer_len, &write_max_frame_size, &read_max_msg_size,
             &read_max_num_frames, &max_handshake_size))
     {
         return -1;
+    }
+
+    if (debug)
+    {
+        g_log_options.loglevel = HHLOG_LEVEL_DEBUG;
     }
 
     PyObject* tmp = self->conn_class;
@@ -356,10 +372,23 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
 static PyObject* Server_listen(hh_ServerObj* self, PyObject* args)
 {
     g_threadState = PyEval_SaveThread();
+
+    if (self->serv == NULL)
+    {
+        PyEval_RestoreThread(g_threadState);
+        PyErr_SetString(PyExc_TypeError, "Server.__init__ not called!");
+        return NULL;
+    }
+
     install_sighandler(self);
     server_result r = server_listen(self->serv);
     uninstall_sighandler(self);
     PyEval_RestoreThread(g_threadState);
+
+    if (PyErr_Occurred())
+    {
+        return NULL;
+    }
 
     switch (r)
     {
@@ -433,13 +462,14 @@ ServerConn_send(hh_ServerConnObj* self, PyObject* args, PyObject* kwargs)
 {
     if (self->conn == NULL)
     {
-        PyErr_SetString(PyExc_TypeError, "Object was not created by Server");
+        PyErr_SetString(PyExc_TypeError, "Connection was already closed, or was"
+                " not created by Server");
         return NULL;
     }
 
     static char* kwlist[] =
     {
-        "msg", "isText", NULL
+        "msg", "is_text", NULL
     };
 
     int is_text = 1;
@@ -541,7 +571,7 @@ ServerConn_send_close(hh_ServerConnObj* self, PyObject* args, PyObject* kwargs)
 
     static char* kwlist[] =
     {
-        "code", "msg", NULL
+        "code", "reason", NULL
     };
 
     char* data = NULL;
@@ -721,7 +751,14 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
     /* Acquire GIL */
     PyEval_RestoreThread(g_threadState);
 
-    PyObject* conn_obj;
+    if (PyErr_Occurred())
+    {
+        server_stop(server_obj->serv);
+        g_threadState = PyEval_SaveThread();
+        return false;
+    }
+
+    PyObject* conn_obj = NULL;
     PyObject* ret = NULL;
     PyObject* sub_proto = NULL;
     PyObject* extensions = NULL;
@@ -736,9 +773,15 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
     conn_obj = PyObject_CallObject(server_obj->conn_class, NULL);
     if (conn_obj == NULL)
     {
-        goto leave;
+        goto fail;
     }
 
+    if (PyObject_SetAttrString(conn_obj, "server", (PyObject*)server_obj) == -1)
+    {
+        goto fail;
+    }
+
+    hhlog(HHLOG_LEVEL_DEBUG, "SETTING CONN");
     server_conn_set_userdata(conn, conn_obj);
     ((hh_ServerConnObj*)conn_obj)->conn = conn;
 
@@ -766,7 +809,7 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
         sub_proto = PySequence_GetItem(ret, 0);
         if (sub_proto == NULL)
         {
-            goto leave;
+            goto fail;
         }
 
         if (sub_proto != Py_None)
@@ -774,7 +817,7 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
             char* proto = PyString_AsString(sub_proto);
             if (proto == NULL)
             {
-                goto leave;
+                goto fail;
             }
 
             unsigned num_protocols = server_get_num_client_subprotocols(conn);
@@ -791,7 +834,7 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
         extensions = PySequence_GetItem(ret, 1);
         if (extensions == NULL)
         {
-            goto leave;
+            goto fail;
         }
 
         if (extensions != Py_None)
@@ -801,7 +844,7 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
                                 "Second value must be a sequence type");
             if (fast_exts == NULL)
             {
-                goto leave;
+                goto fail;
             }
 
             Py_ssize_t ext_len = PySequence_Length(fast_exts);
@@ -816,7 +859,7 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
                     char* user_ext = PyString_AsString(ext_obj);
                     if (user_ext == NULL)
                     {
-                        goto leave;
+                        goto fail;
                     }
 
                     if (strcmp(ext, user_ext) == 0)
@@ -850,12 +893,24 @@ leave:
     g_threadState = PyEval_SaveThread();
 
     return result;
+
+fail:
+    Py_XDECREF(conn_obj);
+    result = false;
+    goto leave;
 }
 
 static void on_open(server_conn* conn, hh_ServerObj* server_obj)
 {
     /* Acquire GIL */
     PyEval_RestoreThread(g_threadState);
+
+    if (PyErr_Occurred())
+    {
+        server_stop(server_obj->serv);
+        g_threadState = PyEval_SaveThread();
+        return;
+    }
 
     PyObject* ret;
     PyObject* conn_obj = server_conn_get_userdata(conn);
@@ -878,6 +933,13 @@ static void on_message(server_conn* conn, endpoint_msg* msg,
 {
     /* Acquire GIL */
     PyEval_RestoreThread(g_threadState);
+
+    if (PyErr_Occurred())
+    {
+        server_stop(server_obj->serv);
+        g_threadState = PyEval_SaveThread();
+        return;
+    }
 
     PyObject* ret;
     PyObject* is_text = msg->is_text ? Py_True : Py_False;
@@ -903,6 +965,13 @@ static void on_ping(server_conn* conn, char* payload, int payload_len,
     /* Acquire GIL */
     PyEval_RestoreThread(g_threadState);
 
+    if (PyErr_Occurred())
+    {
+        server_stop(server_obj->serv);
+        g_threadState = PyEval_SaveThread();
+        return;
+    }
+
     PyObject* ret;
     PyObject* conn_obj = server_conn_get_userdata(conn);
 
@@ -924,6 +993,13 @@ static void on_pong(server_conn* conn, char* payload, int payload_len,
 {
     /* Acquire GIL */
     PyEval_RestoreThread(g_threadState);
+
+    if (PyErr_Occurred())
+    {
+        server_stop(server_obj->serv);
+        g_threadState = PyEval_SaveThread();
+        return;
+    }
 
     PyObject* ret;
     PyObject* conn_obj = server_conn_get_userdata(conn);
@@ -947,29 +1023,37 @@ static void on_close(server_conn* conn, int code, const char* reason,
     /* Acquire GIL */
     PyEval_RestoreThread(g_threadState);
 
-    PyObject* ret;
+    PyObject* ret = NULL;
     PyObject* conn_obj = server_conn_get_userdata(conn);
     if (conn_obj == NULL)
     {
+        hhlog(HHLOG_LEVEL_ERROR, "on_close NULL USERDATA");
         goto leave;
     }
 
-    /* Call on_close(msg) */
-    if (reason_len > 0 && code > 0)
+    if (PyErr_Occurred() == NULL)
     {
-        ret = PyObject_CallMethod(conn_obj, "on_close", "is#", code, reason,
-                                  reason_len);
-    }
-    else if (code > 0)
-    {
-        ret = PyObject_CallMethod(conn_obj, "on_close", "iO", code, Py_None);
-    }
-    else
-    {
-        ret = PyObject_CallMethod(conn_obj, "on_close", "OO", Py_None, Py_None);
+        /* Call on_close(msg) */
+        if (reason_len > 0 && code > 0)
+        {
+            ret = PyObject_CallMethod(conn_obj, "on_close", "is#", code, reason,
+                                      reason_len);
+        }
+        else if (code > 0)
+        {
+            ret = PyObject_CallMethod(conn_obj, "on_close", "iO", code,
+                                      Py_None);
+        }
+        else
+        {
+            ret = PyObject_CallMethod(conn_obj, "on_close", "OO", Py_None,
+                                      Py_None);
+        }
     }
 
     server_conn_set_userdata(conn, NULL);
+    ((hh_ServerConnObj*)conn_obj)->conn = NULL;
+
     Py_DECREF(conn_obj);
     Py_XDECREF(ret);
 
@@ -1010,7 +1094,7 @@ static void uninstall_sighandler(hh_ServerObj* obj)
     sigaction(SIGINT, &obj->old_int_act, NULL);
 }
 
-PyMODINIT_FUNC initheelhook(void)
+PyMODINIT_FUNC init_heelhook(void)
 {
     PyObject *module;
 
@@ -1029,6 +1113,8 @@ PyMODINIT_FUNC initheelhook(void)
     {
         return;
     }
+
+    hhlog_set_options(&g_log_options);
 
     Py_INCREF(&hh_ServerType);
     PyModule_AddObject(module, "Server", (PyObject *)&hh_ServerType);

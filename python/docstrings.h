@@ -1,6 +1,6 @@
 PyDoc_STRVAR(Server__doc__,
 "Server(bindaddr=\"0.0.0.0\",port=9001,connection_class=heelhook.ServerConn,\n"
-"       max_clients=1024,heartbeat_interval_ms=0,heartbeat_ttl_ms=0,\n"
+"       max_clients=1024,debug=False,heartbeat_interval_ms=0,heartbeat_ttl_ms=0,\n"
 "       handshake_timeout_ms=0,init_buffer_len=4096,write_max_frame_size=-1,\n"
 "       read_max_msg_size=1*1024*1024,read_max_num_frames=-1,\n"
 "       max_handshake_size=-1)\n\n"
@@ -12,6 +12,7 @@ PyDoc_STRVAR(Server__doc__,
 "    events, and sending messages\n"
 "    max_clients - maximum number of clients the server will allow to be\n"
 "                  concurrently connected\n"
+"    debug - True enables debug logging\n"
 "    heartbeat_interval_ms - how often to send heartbeat pings. 0 for never\n"
 "    heartbeat_ttl_ms - how long to wait for a reply to a heartbeat ping. If\n"
 "                       set to 0, heartbeats will be pongs instead of pings and\n"
@@ -43,7 +44,8 @@ PyDoc_STRVAR(ServerConn__doc__,
 "Represents a connection to a single client. Subtype this to define your app\n"
 "and pass that as the 'connection_class' to the Server constructor.\n"
 "It is INVALID to instantiate one of these yourself; leave that to the Server\n"
-"object");
+"object. There will be a 'server' member available for the lifetime of this\n"
+"class that is a reference to the Server object that created it.");
 
 PyDoc_STRVAR(ServerConn_on_connect__doc__,
 "on_connect(self)\n\n"

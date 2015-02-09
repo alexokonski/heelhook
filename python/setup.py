@@ -42,10 +42,11 @@ objs = [library_path]
 setup(
     name='heelhook',
     version='1.0',
+    py_modules=['heelhook'],
     ext_modules=[
         Extension(
-            'heelhook',
-            ['heelhook.c'],
+            name='_heelhook',
+            sources=['_heelhook.c'],
             include_dirs=[SRC_DIR],
             extra_objects=objs,
             extra_compile_args=["-std=c99"],

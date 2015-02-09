@@ -1,13 +1,10 @@
 import sys
 from heelhook import Server, ServerConn
 
-client_num = 0
-
 class EchoConnection(ServerConn):
     def on_connect(self):
-        global client_num
-        self.num = client_num
-        client_num += 1
+        self.num = self.server.num_clients
+        self.server.num_clients += 1
 
         print self.num, "Client connected. Resource:", self.get_resource()
         print self.num, "Got subprotocols:", self.get_sub_protocols()
@@ -20,9 +17,14 @@ class EchoConnection(ServerConn):
     def on_close(self, code, reason):
         print self.num, "Got close. code:", code, "reason:", reason
 
+class EchoServer(Server):
+    def __init__(self, *args, **kwargs):
+        self.num_clients = 0
+        super(EchoServer, self).__init__(*args, **kwargs)
+
 if __name__ == "__main__":
     max_size = 20 * 1024 * 1024
-    server = Server(port=int(sys.argv[1]), connection_class=EchoConnection,
+    server = EchoServer(port=int(sys.argv[1]), connection_class=EchoConnection,
                     write_max_frame_size=max_size, read_max_msg_size=max_size,
                     read_max_num_frames=max_size)
 
