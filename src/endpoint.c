@@ -106,9 +106,8 @@ endpoint_write_result endpoint_write(endpoint* conn, int fd)
 
         if (num_written > 0)
         {
-            /*printf("WRITTEN: %.*s\n", (int)len, &out_buf[conn->write_pos]);
-            hhlog(HHLOG_LEVEL_DEBUG, "WROTE %lu bytes", buf_len -
-                        conn->write_pos);*/
+            hhlog(HHLOG_LEVEL_DEBUG_3, "WROTE %lu bytes", buf_len -
+                        conn->write_pos);
         }
         conn->write_pos += (size_t)num_written;
         total_written += num_written;
@@ -412,6 +411,7 @@ endpoint_read_result endpoint_read(endpoint* conn, int fd)
 
     /*hhlog(HHLOG_LEVEL_DEBUG, "READ %lu bytes: %.*s", num_read,
               (int)num_read, buf);*/
+    hhlog(HHLOG_LEVEL_DEBUG_3, "READ %lu bytes", num_read);
 
     hhassert(num_read > 0);
     protocol_update_read(pconn, (size_t)num_read);

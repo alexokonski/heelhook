@@ -28,6 +28,12 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * TODO:Make this prettier and more like:
+ *
+ * http://www.makelinux.net/ldd3/chp-11-sect-5
+ */
+
 #define INLIST_INIT_HEAD(n, next_name, prev_name) \
     do\
     {\

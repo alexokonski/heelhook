@@ -11,7 +11,7 @@
 #include "hhlog.h"
 
 #define MOD_HEELHOOK "_heelhook"
-#define HEELHOOK_VERSION "0.0" /* trololo */
+#define HEELHOOK_VERSION "0.0"
 
 static PyObject* g_HeelhookError = NULL;
 static PyThreadState* g_threadState = NULL;
@@ -59,7 +59,6 @@ struct hh_ServerObj
     config_server_options options;
     server* serv;
     PyObject* conn_class; /* subtype of ServerConn */
-    /* PyObject* connections; PySet of ServerConn instances */
     struct sigaction old_term_act;
     struct sigaction old_int_act;
 };
@@ -295,7 +294,7 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
 
     static char* kwlist[] =
     {
-        "bindaddr", "port", "connection_class", "max_clients", "debug",
+        "bindaddr", "port", "connection_class", "max_clients", "loglevel",
         "heartbeat_interval_ms", "heartbeat_ttl_ms", "handshake_timeout_ms",
         "init_buffer_len", "write_max_frame_size", "read_max_msg_size",
         "read_max_num_frames", "max_handshake_size",
@@ -306,7 +305,7 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
     int port = 9001;
     PyObject* connection_class = (PyObject*)(&hh_ServerConnType);
     int max_clients = 1024;
-    int debug = 0;
+    int loglevel = HHLOG_LEVEL_INFO;
     int heartbeat_interval_ms = 0;
     int heartbeat_ttl_ms = 0;
     int handshake_timeout_ms = 0;
@@ -317,7 +316,7 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
     int max_handshake_size = -1;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|siOiiiiiiiiii", kwlist,
-            &bindaddr, &port, &connection_class, &max_clients, &debug,
+            &bindaddr, &port, &connection_class, &max_clients, &loglevel,
             &heartbeat_interval_ms, &heartbeat_ttl_ms, &handshake_timeout_ms,
             &init_buffer_len, &write_max_frame_size, &read_max_msg_size,
             &read_max_num_frames, &max_handshake_size))
@@ -325,10 +324,7 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
         return -1;
     }
 
-    if (debug)
-    {
-        g_log_options.loglevel = HHLOG_LEVEL_DEBUG;
-    }
+    g_log_options.loglevel = loglevel;
 
     PyObject* tmp = self->conn_class;
     Py_INCREF(connection_class);

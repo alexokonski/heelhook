@@ -35,12 +35,19 @@
 
 typedef enum
 {
-    HHLOG_LEVEL_DEBUG,
+    HHLOG_LEVEL_DEBUG_4,
+    HHLOG_LEVEL_DEBUG_3,
+    HHLOG_LEVEL_DEBUG_2,
+    HHLOG_LEVEL_DEBUG_1,
+    HHLOG_LEVEL_DEBUG_0,
     HHLOG_LEVEL_INFO,
     HHLOG_LEVEL_NOTICE,
     HHLOG_LEVEL_WARNING,
     HHLOG_LEVEL_ERROR
 } hhlog_level;
+
+/* alias for debug level 0 */
+#define HHLOG_LEVEL_DEBUG HHLOG_LEVEL_DEBUG_0
 
 typedef struct
 {

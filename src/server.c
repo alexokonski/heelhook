@@ -260,6 +260,9 @@ static void server_on_ping_callback(endpoint* conn_info, char* payload,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
+    hhlog(HHLOG_LEVEL_DEBUG_2, "ping received from client %d: %.*s", conn->fd,
+          (int)payload_len, payload);
+
     if (serv->cbs.on_ping != NULL)
     {
         serv->cbs.on_ping(conn, payload, payload_len, serv->userdata);
@@ -277,6 +280,9 @@ static void server_on_pong_callback(endpoint* conn_info, char* payload,
 
     server_conn* conn = userdata;
     server* serv = conn->serv;
+
+    hhlog(HHLOG_LEVEL_DEBUG_2, "ping received from client %d: %.*s", conn->fd,
+          (int)payload_len, payload);
 
     if (serv->options.heartbeat_interval_ms > 0 &&
         serv->options.heartbeat_ttl_ms > 0)
@@ -473,6 +479,9 @@ static void server_on_message_callback(endpoint* conn_info, endpoint_msg* msg,
 
     server_conn* conn = userdata;
     server* serv = conn->serv;
+
+    hhlog(HHLOG_LEVEL_DEBUG_1, "msg received from client %d: %.*s", conn->fd,
+          (int)msg->msg_len, msg->data);
 
     if (serv->cbs.on_message!= NULL)
     {
@@ -802,6 +811,9 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 {
     hhassert(conn->fd != -1);
 
+    hhlog(HHLOG_LEVEL_DEBUG_1, "sending msg to client %d (%zu bytes): %.*s",
+          conn->fd, msg->msg_len, (int)msg->msg_len, msg->data);
+
     endpoint_result r = endpoint_send_msg(&conn->endp, msg);
 
     iloop_result ir = queue_write(conn);
@@ -815,10 +827,13 @@ server_result server_conn_send_msg(server_conn* conn, endpoint_msg* msg)
 }
 
 /* send a ping with payload (NULL for no payload)*/
-server_result server_conn_send_ping(server_conn* conn, char* payload, int
-                                    payload_len)
+server_result server_conn_send_ping(server_conn* conn, char* payload,
+                                    int payload_len)
 {
     hhassert(conn->fd != -1);
+
+    hhlog(HHLOG_LEVEL_DEBUG_2, "sending ping to client %d (%d bytes): %.*s",
+          conn->fd, payload_len, payload_len, payload);
 
     endpoint_result r = endpoint_send_ping(&conn->endp, payload, payload_len);
 
@@ -833,10 +848,13 @@ server_result server_conn_send_ping(server_conn* conn, char* payload, int
 }
 
 /* send a pong with payload (NULL for no payload)*/
-server_result server_conn_send_pong(server_conn* conn, char* payload, int
-                                    payload_len)
+server_result server_conn_send_pong(server_conn* conn, char* payload,
+                                    int payload_len)
 {
     hhassert(conn->fd != -1);
+
+    hhlog(HHLOG_LEVEL_DEBUG_2, "sending pong to client %d (%d bytes): %.*s",
+          conn->fd, payload_len, payload_len, payload);
 
     endpoint_result r = endpoint_send_pong(&conn->endp, payload, payload_len);
 

@@ -94,7 +94,19 @@ void hhlog_log__(hhlog_level level, const char* filename, int line, ...)
     int syslog_level = HHLOG_LEVEL_INFO;
     switch(level)
     {
-    case HHLOG_LEVEL_DEBUG:
+    case HHLOG_LEVEL_DEBUG_4:
+        level_str = "4";
+        syslog_level = LOG_DEBUG;
+    case HHLOG_LEVEL_DEBUG_3:
+        level_str = "3";
+        syslog_level = LOG_DEBUG;
+    case HHLOG_LEVEL_DEBUG_2:
+        level_str = "2";
+        syslog_level = LOG_DEBUG;
+    case HHLOG_LEVEL_DEBUG_1:
+        level_str = "1";
+        syslog_level = LOG_DEBUG;
+    case HHLOG_LEVEL_DEBUG_0:
         level_str = "D";
         syslog_level = LOG_DEBUG;
         break;

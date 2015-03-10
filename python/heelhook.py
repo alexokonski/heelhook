@@ -41,3 +41,14 @@ class CloseCode(object):
     CLIENT_NEEDS_EXTENSION = 1010
     UNEXPECTED_CONDITION   = 1011
 
+class LogLevel(object):
+    DEBUG_4 = 0
+    DEBUG_3 = 1
+    DEBUG_2 = 2
+    DEBUG_1 = 3
+    DEBUG_0 = 4
+    INFO    = 5
+    NOTICE  = 6
+    WARNING = 7
+    ERROR   = 8
+
