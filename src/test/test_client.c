@@ -732,7 +732,7 @@ static void mps_connect_proc(event_loop* loop, event_time_id id, void* data)
 
     /* connect a client */
     connect_client(c, info->options, info->cbs, info->addr, info->port,
-                   info->resource, info->host, info->extra_headers, NULL, loop,
+                   info->resource, info->host, info->extra_headers, loop, loop,
                    true);
     info->num_connected++;
 
@@ -784,7 +784,7 @@ static void do_mps_test(const char* addr, const char* resource, int port,
         {
             client* c = &clients[i];
             connect_client(c, &options, &cbs, addr, port, resource, host,
-                               extra_headers, NULL, loop, true);
+                               extra_headers, loop, loop, true);
         }
     }
     else
@@ -875,7 +875,7 @@ static void do_timeout_test(const char* addr, const char* resource, int port)
     event_loop* loop = event_create_loop(1 + 1024);
 
     connect_client(&c, &options, &cbs, addr, port, resource, host,
-                   extra_headers, NULL, loop, false);
+                   extra_headers, loop, loop, false);
 
     random_socket_connect(addr, port, loop);
 
