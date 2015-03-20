@@ -9,7 +9,7 @@ LDFLAGS?= -lrt
 
 FINAL_CFLAGS= $(STD) $(WARN) $(OPT) $(DEBUG) $(SYMBOL) $(EXT_SYMBOL) $(CFLAGS)
 FINAL_LDFLAGS= $(LDFLAGS) -g -ggdb
-TEST_LIBS= -pthread $(FINAL_LDFLAGS)
+TEST_LIBS= $(FINAL_LDFLAGS)
 ENDPOINT_OBJECTS= hhmemory.o darray.o protocol.o sha1.o cencode.o util.o error_code.o endpoint.o hhlog.o
 HEELHOOK_OBJECTS= $(ENDPOINT_OBJECTS) event.o server.o pqueue.o client.o
 TEST_CC= $(CC) $(TEST_LIBS) -o $@ $^
@@ -45,7 +45,7 @@ test: test_event test_darray test_protocol test_util test_pqueue
 	@(bash runtests.sh $^)
 
 test_event: test_event.o event.o pqueue.o hhmemory.o util.o darray.o
-	$(TEST_CC)
+	$(TEST_CC) -lpthread
 
 test_darray: test_darray.o darray.o hhmemory.o util.o
 	$(TEST_CC)
