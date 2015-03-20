@@ -46,7 +46,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define ENDPOINT_MAX_READ_LENGTH (1024 * 64)
+#define ENDPOINT_MAX_READ_LENGTH (1024 * 4)
 #define ENDPOINT_MAX_WRITE_LENGTH (1024 * 64)
 
 static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg);
