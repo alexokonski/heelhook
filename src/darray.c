@@ -153,9 +153,13 @@ void darray_slice(darray* array, size_t start, ssize_t end)
     hhassert(end < 0 || (size_t)end <= array->len);
     hhassert(end < 0 || (size_t)end >= start);
 
+    /* update array len */
     size_t uend = (end < 0) ? array->len : (size_t)end;
-    memmove(array->data, array->data + start, uend - start);
-    array->len = uend - start;
+    array->len = (uend - start);
+
+    /* copy region from [start, end) to the begining of the array */
+    void* src = array->data + (start * array->elem_size);
+    memmove(array->data, src, array->len * array->elem_size);
 }
 
 /*
