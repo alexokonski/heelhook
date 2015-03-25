@@ -170,6 +170,38 @@ int main(void)
     test_len(copy_arr, arr_both_size, END_ARGS);
     test_size_reserved(copy_arr, 12, END_ARGS);
 
+    /* test slice */
+    darray_destroy(array);
+    cur_test = "slice";
+
+    /* purposely choose elem_size != 1 */
+    int chop_arr[]     = {0,1,2,3,4,5,6,7,8,'a','b','c','d','e','f','g'};
+    int sliced_arr[]   = {'a','b','c'};
+    int removed_arr[]  = {0,1,2,3,4,5,6,7,8,'d','e','f','g'};
+    int removed_arr2[] = {0,1,2,3,4,5,6,7,8};
+    int chop_arr_len = hhcountof(chop_arr);
+    array = darray_create_data(chop_arr, sizeof(*chop_arr),
+                               chop_arr_len, chop_arr_len);
+    darray_slice(array, 9, 12);
+    test_len(array, 3, END_ARGS);
+    test_data(array, sliced_arr, sizeof(sliced_arr), END_ARGS);
+
+    /* test remove */
+    cur_test = "remove";
+    darray_destroy(array);
+    array = darray_create_data(chop_arr, sizeof(*chop_arr),
+                               chop_arr_len, chop_arr_len);
+    darray_remove(array, 9, 12);
+    test_len(array, hhcountof(removed_arr), END_ARGS);
+    test_data(array, removed_arr, sizeof(removed_arr), END_ARGS);
+
+    darray_destroy(array);
+    array = darray_create_data(chop_arr, sizeof(*chop_arr),
+                               chop_arr_len, chop_arr_len);
+    darray_remove(array, 9, chop_arr_len);
+    test_len(array, hhcountof(removed_arr2), END_ARGS);
+    test_data(array, removed_arr2, sizeof(removed_arr2), END_ARGS);
+
     darray_destroy(array);
     darray_destroy(copy);
     darray_destroy(copy_arr);

@@ -79,6 +79,12 @@ void darray_clear(darray* array);
 void darray_slice(darray* array, size_t start, ssize_t end);
 
 /*
+ * remove the range [start, end) from the darray. if end is -1, remove
+ * to the end of the darray
+ */
+void darray_remove(darray* array, size_t start, ssize_t end);
+
+/*
  * Trim the reserved space down to min_elems_reserved or the result of
  * darray_get_len, whicever is larger
  *
