@@ -1513,8 +1513,10 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
         }
 
         (*start_pos) = pos;
-        if (conn->valid_state.state == UTF8_REJECT ||
-            (msg_finished && conn->valid_state.state != UTF8_ACCEPT))
+
+        if (msg_type == PROTOCOL_MSG_TEXT &&
+            (conn->valid_state.state == UTF8_REJECT ||
+                (msg_finished && conn->valid_state.state != UTF8_ACCEPT)))
         {
             handle_violation(conn, HH_ERROR_BAD_DATA,
                              "text frame was not valid utf-8 text");
@@ -1548,8 +1550,11 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
         else if (msg_finished)
         {
             /* reset utf8 validator state */
-            conn->valid_state.state = 0;
-            conn->valid_state.codepoint = 0;
+            if (msg_type == PROTOCOL_MSG_TEXT)
+            {
+                conn->valid_state.state = 0;
+                conn->valid_state.codepoint = 0;
+            }
 
             return PROTOCOL_RESULT_MESSAGE_FINISHED;
         }
