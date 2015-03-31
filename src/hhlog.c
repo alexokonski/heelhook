@@ -37,7 +37,7 @@
 #include <sys/time.h>
 #include <time.h>
 
-#define ENDPOINT_MAX_LOG_LENGTH 2048
+#define ENDPOINT_MAX_LOG_LENGTH 4096
 
 static hhlog_options g_default_options =
 {
@@ -82,12 +82,16 @@ void hhlog_log__(hhlog_level level, const char* filename, int line, ...)
     struct timeval tv;
     char time_buffer[64];
     gettimeofday(&tv, NULL);
-    int num_written = (int)strftime(time_buffer, sizeof(time_buffer),
+    size_t sz = sizeof(time_buffer);
+    int n = (int)strftime(time_buffer, sz,
         "%d %b %H:%M:%S.",
         localtime(&tv.tv_sec)
     );
-    num_written += snprintf(&time_buffer[num_written],
-                            sizeof(time_buffer) - (size_t)num_written, "%03d",
+    size_t num_written = hhmin((size_t)n, sz);
+
+    sz = sizeof(time_buffer) - (size_t)num_written;
+    n = snprintf(&time_buffer[num_written],
+                            sz, "%03d",
                             (int)tv.tv_usec / 1000);
 
     char* level_str = NULL;
@@ -127,22 +131,24 @@ void hhlog_log__(hhlog_level level, const char* filename, int line, ...)
         syslog_level = LOG_ERR;
         break;
     }
-    num_written = snprintf(buffer, sizeof(buffer), "%s %s ", time_buffer,
+    sz = sizeof(buffer);
+    n = snprintf(buffer, sizeof(buffer), "%s %s ", time_buffer,
                            level_str);
+    num_written = hhmin((size_t)n, sz);
 
     va_list list;
     va_start(list, line);
     char* format = va_arg(list, char*);
-    num_written += vsnprintf(&buffer[num_written],
-                             sizeof(buffer) - (size_t)num_written, format,
-                             list);
+    sz = sizeof(buffer) - (size_t)num_written;
+    n = vsnprintf(&buffer[num_written], sz, format, list);
+    num_written += hhmin((size_t)n, sz);
     va_end(list);
 
     if(g_current_options->log_location)
     {
-        num_written += snprintf(&buffer[num_written],
-                                sizeof(buffer) - (size_t)num_written,
-                                " (%s:%d)", filename, line);
+        sz = sizeof(buffer) - (size_t)num_written;
+        n = snprintf(&buffer[num_written], sz, " (%s:%d)", filename, line);
+        num_written += hhmin((size_t)n, sz);
     }
 
     if (fp != NULL)
