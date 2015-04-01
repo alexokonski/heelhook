@@ -335,6 +335,9 @@ static void server_on_close_callback(endpoint* conn_info, int code,
     if (serv->stopping && serv->active_head == NULL && loop->stop != NULL)
     {
         hhlog(HHLOG_LEVEL_DEBUG, "final client disconnected, stopping");
+        loop->delete_time(loop, ILOOP_HEARTBEAT_CB);
+        loop->delete_time(loop, ILOOP_HEARTBEAT_EXPIRE_CB);
+        loop->delete_time(loop, ILOOP_HANDSHAKE_TIMEOUT_CB);
         loop->stop(loop);
     }
 }
@@ -681,6 +684,10 @@ static void server_teardown(server* serv)
      */
     if (serv->active_head == NULL)
     {
+        loop->delete_time(loop, ILOOP_HEARTBEAT_CB);
+        loop->delete_time(loop, ILOOP_HEARTBEAT_EXPIRE_CB);
+        loop->delete_time(loop, ILOOP_HANDSHAKE_TIMEOUT_CB);
+
         if (loop->stop != NULL)
         {
             loop->stop(loop);
@@ -713,9 +720,6 @@ static void stop_watchdog(iloop* loop, iloop_time_cb_type type, void* data)
 
         /* we aren't needed any more */
         loop->delete_time(loop, type);
-        loop->delete_time(loop, ILOOP_HEARTBEAT_CB);
-        loop->delete_time(loop, ILOOP_HEARTBEAT_EXPIRE_CB);
-        loop->delete_time(loop, ILOOP_HANDSHAKE_TIMEOUT_CB);
 
         /* tear down everything else */
         server_teardown(serv);
