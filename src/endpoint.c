@@ -199,6 +199,9 @@ static parse_result parse_endpoint_messages(endpoint* conn)
     parse_result pr = PARSE_CONTINUE;
     protocol_msg msg;
     endpoint_msg smsg;
+    size_t parsed_start = 0;
+    size_t parsed_end = 0;
+
     do
     {
         switch (conn->type)
@@ -283,6 +286,16 @@ static parse_result parse_endpoint_messages(endpoint* conn)
                 }
                 break;
             }
+
+            /*
+             * We just parsed a complete message. If it's the first message
+             * we've parsed in this call, set parsed_start.
+             */
+            if (parsed_end == 0)
+            {
+                parsed_start = msg.pos.full_msg_start_pos;
+            }
+            parsed_end = conn->read_pos;
             break;
         case PROTOCOL_RESULT_CONTINUE:
         case PROTOCOL_RESULT_FRAME_FINISHED:
@@ -301,18 +314,21 @@ static parse_result parse_endpoint_messages(endpoint* conn)
              conn->read_pos < darray_get_len(conn->pconn.read_buffer));
 
     /*
-     * we just finished parsing a data message.  we don't need the data
-     * for it anymore, so slice it off the buffer
+     * remove all unneeded data from the read buffer
      */
-    if (r == PROTOCOL_RESULT_MESSAGE_FINISHED && protocol_is_data(msg.type))
+    if (parsed_start != parsed_end)
     {
-        darray_slice(conn->pconn.read_buffer, conn->read_pos, -1);
+        hhassert(parsed_end > parsed_start);
+
+        /* remove the range [parsed_start, parsed_end) from the read buffer */
+        darray_remove(conn->pconn.read_buffer, parsed_start, parsed_end);
 
         /* release some memory back, if necessary */
         size_t min_size_reserved = conn->pconn.settings->init_buf_len;
         trim_buffer(&conn->pconn.read_buffer, min_size_reserved);
 
-        conn->read_pos = darray_get_len(conn->pconn.read_buffer);
+        /* the rest of the buffer now lives at parsed_start */
+        conn->read_pos = parsed_start;
     }
 
     return pr;

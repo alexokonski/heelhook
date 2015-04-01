@@ -623,6 +623,7 @@ protocol_parse_frame_hdr(protocol_conn* conn, bool expect_mask,
     }
     hdr->masked = is_masked;
     hdr->fin = (fin != 0);
+    hdr->frame_start_pos = pos;
     pos += (size_t)(data - &raw_buffer[pos]);
     hdr->data_start_pos = pos;
     *pos_ptr = pos;
@@ -680,7 +681,8 @@ int protocol_init_conn(protocol_conn* conn, protocol_settings* settings,
     if (conn->write_buffer == NULL) return -1;
     conn->frag_msg.type = PROTOCOL_MSG_NONE;
     conn->frag_msg.msg_len = 0;
-    conn->frag_msg.start_pos = 0;
+    conn->frag_msg.pos.data_start_pos = 0;
+    conn->frag_msg.pos.full_msg_start_pos = 0;
     conn->frame_hdr.payload_len = -1;
     conn->valid_state.state = 0;
     conn->valid_state.codepoint = 0;
@@ -731,7 +733,8 @@ void protocol_reset_conn(protocol_conn* conn)
     conn->state = PROTOCOL_STATE_READ_HANDSHAKE;
     conn->frag_msg.type = PROTOCOL_MSG_NONE;
     conn->frag_msg.msg_len = 0;
-    conn->frag_msg.start_pos = 0;
+    conn->frag_msg.pos.data_start_pos = 0;
+    conn->frag_msg.pos.full_msg_start_pos = 0;
     conn->num_fragments_read = 0;
     conn->info.resource = NULL;
     conn->frame_hdr.payload_len = -1;
@@ -1374,8 +1377,9 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
                 hhassert(msg->msg_len == 0);
 
                 msg->type = msg_type;
-                msg->start_pos = pos;
                 msg->msg_len = 0;
+                msg->pos.data_start_pos = pos;
+                msg->pos.full_msg_start_pos = hdr->frame_start_pos;
             }
 
             /*
@@ -1402,8 +1406,10 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
             /*
              * this is a later fragment.
              */
-            mask_and_move_data(&raw_buffer[msg->start_pos+(size_t)msg->msg_len],
-                               data, len, masking_key, hdr->payload_processed,
+            size_t data_start_pos = msg->pos.data_start_pos;
+            void* dest = &raw_buffer[data_start_pos+(size_t)msg->msg_len];
+            mask_and_move_data(dest, data, len, masking_key,
+                               hdr->payload_processed,
                                (msg->type == PROTOCOL_MSG_TEXT),
                                &conn->valid_state.state,
                                &conn->valid_state.codepoint);
@@ -1446,8 +1452,10 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
             /*
              * this is the last fragment of a fragmented message.
              */
-            mask_and_move_data(&raw_buffer[msg->start_pos+(size_t)msg->msg_len],
-                               data, len, masking_key, hdr->payload_processed,
+            size_t data_start_pos = msg->pos.data_start_pos;
+            void* dest = &raw_buffer[data_start_pos+(size_t)msg->msg_len];
+            mask_and_move_data(dest, data, len, masking_key,
+                               hdr->payload_processed,
                                (msg->type == PROTOCOL_MSG_TEXT),
                                &conn->valid_state.state,
                                &conn->valid_state.codepoint);
@@ -1465,11 +1473,13 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
                 /* we just processed a message, tell the caller */
                 read_msg->type = msg->type;
                 read_msg->msg_len = msg->msg_len;
-                read_msg->data = &raw_buffer[msg->start_pos];
+                read_msg->data = &raw_buffer[msg->pos.data_start_pos];
+                read_msg->pos = msg->pos;
 
                 /* we're no longer keeping track of a fragmented message */
                 msg->type = PROTOCOL_MSG_NONE;
-                msg->start_pos = 0;
+                msg->pos.data_start_pos = 0;
+                msg->pos.full_msg_start_pos = 0;
                 msg->msg_len = 0;
 
                 /* we just read a full message, reset the fragment counter */
@@ -1503,6 +1513,9 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
                 read_msg->type = msg_type;
                 read_msg->msg_len = hdr->payload_len;
                 read_msg->data = &raw_buffer[hdr->data_start_pos];
+                read_msg->pos.full_msg_start_pos = hdr->frame_start_pos;
+                read_msg->pos.data_start_pos = hdr->data_start_pos;
+
                 hdr->payload_len = -1;
 
                 /* we just read a full message, reset the fragment counter */

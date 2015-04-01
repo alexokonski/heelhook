@@ -88,18 +88,34 @@ typedef enum
     PROTOCOL_HANDSHAKE_FAIL
 } protocol_handshake_result;
 
+/* information about a message's position in the read_buffer */
+typedef struct
+{
+    /*
+     * start position of all of this message's data in the read_buffer,
+     * INCLUDING header bytes
+     */
+    size_t full_msg_start_pos;
+
+    /*
+     * start position of data in the read_buffer
+     */
+    size_t data_start_pos;
+} buffer_info;
+
 /* represents a WebSocket message */
 typedef struct
 {
+    buffer_info pos;
     protocol_msg_type type;
     int64_t msg_len;
     char* data;
 } protocol_msg;
 
-/* represents a WebSocket message, but the data is a pos in some buffer */
+/* represents a WebSocket message, but without a pointer to the actual data */
 typedef struct
 {
-    size_t start_pos;
+    buffer_info pos;
     int64_t msg_len;
     protocol_msg_type type;
 } protocol_offset_msg;
@@ -111,6 +127,7 @@ typedef struct
     protocol_msg_type msg_type;
     int64_t payload_processed;
     int64_t payload_len; /* -1 means we're on a brand new frame */
+    size_t frame_start_pos;
     size_t data_start_pos;
     char masking_key[4];
     bool fin;
