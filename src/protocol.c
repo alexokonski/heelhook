@@ -1341,7 +1341,7 @@ protocol_read_msg(protocol_conn* conn, size_t* start_pos, bool expect_mask,
     protocol_frame_hdr* hdr = &conn->frame_hdr;
 
     /*
-     * protocol_parse_frame_hdr may haveadvanced buffer...
+     * protocol_parse_frame_hdr may have advanced buffer...
      * update data to reflect that
      */
     data = &raw_buffer[pos];

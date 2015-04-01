@@ -218,8 +218,6 @@ static server_conn* activate_conn(server* serv, int client_fd)
 
 static void deactivate_conn(server* serv, server_conn* conn)
 {
-    conn->fd = -1;
-
     /* take this client out of the active list */
     INLIST_REMOVE(serv, conn, next, prev, active_head, active_tail);
 
@@ -281,7 +279,7 @@ static void server_on_pong_callback(endpoint* conn_info, char* payload,
     server_conn* conn = userdata;
     server* serv = conn->serv;
 
-    hhlog(HHLOG_LEVEL_DEBUG_2, "ping received from client %d: %.*s", conn->fd,
+    hhlog(HHLOG_LEVEL_DEBUG_2, "pong received from client %d: %.*s", conn->fd,
           (int)payload_len, payload);
 
     if (serv->options.heartbeat_interval_ms > 0 &&
@@ -323,6 +321,9 @@ static void server_on_close_callback(endpoint* conn_info, int code,
 
     /* close the socket */
     close(conn->fd);
+
+    /* set fd to -1 to mark socket dead */
+    conn->fd = -1;
 
     /* remove from active list */
     deactivate_conn(serv, conn);
@@ -708,6 +709,8 @@ static void stop_watchdog(iloop* loop, iloop_time_cb_type type, void* data)
 
     if (serv->stopping)
     {
+        hhlog(HHLOG_LEVEL_INFO, "received stop, sending close to all clients");
+
         /* we aren't needed any more */
         loop->delete_time(loop, type);
         loop->delete_time(loop, ILOOP_HEARTBEAT_CB);
@@ -725,6 +728,7 @@ static void send_heartbeats(iloop* loop, iloop_time_cb_type type, void* data)
     hhunused(type);
 
     server* serv = data;
+
     uint64_t hb_ttl = serv->options.heartbeat_ttl_ms;
     bool send_ping = (hb_ttl > 0);
     INLIST_FOREACH(serv, server_conn, conn, timeout_next, timeout_prev,
@@ -876,6 +880,9 @@ server_result server_conn_close(server_conn* conn, uint16_t code,
                                 const char* reason, int reason_len)
 {
     hhassert(conn->fd != -1);
+
+    hhlog(HHLOG_LEVEL_DEBUG_2, "sending close to client %d (%d bytes): %d %.*s",
+          conn->fd, reason_len, (int)code, reason_len, reason);
 
     endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
 

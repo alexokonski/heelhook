@@ -73,8 +73,8 @@ size_t darray_get_size_reserved(const darray* array);
 void darray_clear(darray* array);
 
 /*
- * make the darray equal to the range [start, end).  if end is -1,
- * slice to the end of the darrray
+ * make the darray equal to the range [start, end). if end is -1,
+ * slice to the end of the darray
  */
 void darray_slice(darray* array, size_t start, ssize_t end);
 

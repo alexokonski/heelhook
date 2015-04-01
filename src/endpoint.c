@@ -57,7 +57,7 @@ static endpoint_result endpoint_send_pmsg(endpoint* conn, protocol_msg* pmsg);
  */
 static void trim_buffer(darray** buf, size_t min_size_reserved)
 {
-    if ((darray_get_size_reserved(*buf) > 2 * darray_get_len(*buf)) &&
+    if ((darray_get_size_reserved(*buf) > (2 * darray_get_len(*buf))) &&
         darray_get_size_reserved(*buf) > min_size_reserved)
     {
         darray_trim_reserved(buf, min_size_reserved);
@@ -340,12 +340,12 @@ static endpoint_read_result read_handshake(endpoint* conn, int fd)
 
     switch (conn->type)
     {
-        case ENDPOINT_SERVER:
-            hr = protocol_read_handshake_request(&conn->pconn);
-            break;
-        case ENDPOINT_CLIENT:
-            hr = protocol_read_handshake_response(&conn->pconn);
-            break;
+    case ENDPOINT_SERVER:
+        hr = protocol_read_handshake_request(&conn->pconn);
+        break;
+    case ENDPOINT_CLIENT:
+        hr = protocol_read_handshake_response(&conn->pconn);
+        break;
     }
 
     switch (hr)
@@ -632,6 +632,9 @@ endpoint_close(endpoint* conn, uint16_t code, const char* reason,
     char* data = NULL;
     char dummy = '\0';
     endpoint_result r = ENDPOINT_RESULT_SUCCESS;
+
+    hhlog(HHLOG_LEVEL_DEBUG, "endpoint close (%d bytes): %d %.*s",
+          reason_len, (int)code, reason_len, reason);
 
     switch (conn->pconn.state)
     {
