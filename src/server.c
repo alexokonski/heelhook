@@ -890,11 +890,15 @@ server_result server_conn_close(server_conn* conn, uint16_t code,
 
     endpoint_result r = endpoint_close(&conn->endp, code, reason, reason_len);
 
-    iloop_result ir = queue_write(conn);
-    if (ir != ILOOP_SUCCESS)
+    /* it's possible for endpoint_close to directly close the client socket */
+    if (conn->fd != -1)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "close event loop error: %d", ir);
-        return SERVER_RESULT_FAIL;
+        iloop_result ir = queue_write(conn);
+        if (ir != ILOOP_SUCCESS)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "close event loop error: %d", ir);
+            return SERVER_RESULT_FAIL;
+        }
     }
 
     return endpoint_result_to_server_result(r);
