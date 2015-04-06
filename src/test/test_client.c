@@ -369,7 +369,6 @@ static void mps_client_connect(event_loop* loop, int fd, void* data)
         hhlog(HHLOG_LEVEL_ERROR, "event fail: %d, fd: %d", er, fd);
         exit(1);
     }
-    queue_mps_write(c, loop);
     queue_write(c, loop);
 }
 
@@ -418,6 +417,13 @@ static bool ab_on_open(client* c, void* userdata)
     client_send_msg(c, &msg);
     queue_write(c, loop);*/
 
+    return true;
+}
+
+static bool mps_on_open(client* c, void* userdata)
+{
+    event_loop* loop = userdata;
+    queue_mps_write(c, loop);
     return true;
 }
 
@@ -756,7 +762,7 @@ static void do_mps_test(const char* addr, const char* resource, int port,
     conn_settings->rand_func = random_callback;
 
     client_callbacks cbs;
-    cbs.on_open = NULL;
+    cbs.on_open = mps_on_open;
     cbs.on_message = mps_on_message;
     cbs.on_ping = NULL;
     cbs.on_pong = mps_on_pong;
