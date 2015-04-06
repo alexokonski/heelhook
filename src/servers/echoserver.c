@@ -80,7 +80,7 @@ static void on_ping(server_conn* conn, char* payload,
     if (now - last_sample_time >= (SAMPLE_RATE * MS_PER_S))
     {
         float secs_elapsed = (now - last_sample_time) / MS_PER_S;
-        hhlog(HHLOG_LEVEL_DEBUG, "current messages per second: %f",
+        hhlog(HHLOG_LEVEL_INFO, "current messages per second: %f",
               ((float)g_pings_received / (float)secs_elapsed));
         g_pings_received = 0;
         last_sample_time = now;
@@ -118,7 +118,7 @@ on_close(server_conn* conn, int code, const char* reason, int reason_len,
     hhunused(reason);
     hhunused(reason_len);
     hhunused(userdata);
-    hhlog(HHLOG_LEVEL_DEBUG, "Got close: (%d, %.*s)\n", code,
+    hhlog(HHLOG_LEVEL_DEBUG, "Got close: (%d, %.*s)", code,
           (int)reason_len, reason);
 }
 
@@ -164,9 +164,9 @@ int main(int argc, char** argv)
     {
         .bindaddr = NULL,
         .max_clients = 1000,
-        .heartbeat_interval_ms = 30000,
-        .heartbeat_ttl_ms = 5000,
-        .handshake_timeout_ms = 10000,
+        .heartbeat_interval_ms = 0,
+        .heartbeat_ttl_ms = 0,
+        .handshake_timeout_ms = 0,
 
         .endp_settings =
         {
@@ -175,7 +175,7 @@ int main(int argc, char** argv)
                 .write_max_frame_size = 20 * 1024 * 1024,
                 .read_max_msg_size = 20 * 1024 * 1024,
                 .read_max_num_frames = 20 * 1024 * 1024,
-                .max_handshake_size = 2048,
+                .max_handshake_size = 4 * 1024,
                 .init_buf_len = 4 * 1024,
                 .rand_func = NULL
             }
@@ -197,10 +197,18 @@ int main(int argc, char** argv)
 
     g_serv = server_create_detached(&options, &callbacks, NULL);
 
-    char* eventloop = "";
+    char* eventloop = NULL;
     if (argc > 2) eventloop = argv[2];
 
-    if (strcmp(eventloop, "libevent") == 0)
+    if (eventloop == NULL)
+    {
+        hhlog(HHLOG_LEVEL_DEBUG, "Starting with built-in event loop");
+        /* use default event loop */
+        server_listen(g_serv);
+        server_destroy(g_serv);
+        goto done;
+    }
+    else if (strcmp(eventloop, "libevent") == 0)
     {
 #ifdef HH_WITH_LIBEVENT
         struct event_base* base = event_base_new();
@@ -220,10 +228,8 @@ int main(int argc, char** argv)
     }
     else
     {
-        hhlog(HHLOG_LEVEL_DEBUG, "Starting with built-in event loop");
-        /* use default event loop */
-        server_listen(g_serv);
-        server_destroy(g_serv);
+        fprintf(stderr, "unknown eventloop: %s. option(s) are: libevent",
+                eventloop);
         goto done;
     }
 
