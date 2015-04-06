@@ -1295,7 +1295,7 @@ int main(int argc, char** argv)
 
     if (debug)
     {
-        g_log_options.loglevel = HHLOG_LEVEL_DEBUG;
+        g_log_options.loglevel = HHLOG_LEVEL_DEBUG_2;
     }
 
     /* initialize needed state */
