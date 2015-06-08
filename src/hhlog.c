@@ -36,6 +36,7 @@
 #include <syslog.h>
 #include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 
 #define ENDPOINT_MAX_LOG_LENGTH 4096
 
@@ -132,7 +133,7 @@ void hhlog_log__(hhlog_level level, const char* filename, int line, ...)
         break;
     }
     sz = sizeof(buffer);
-    n = snprintf(buffer, sizeof(buffer), "%s %s ", time_buffer,
+    n = snprintf(buffer, sizeof(buffer), "[%d] %s %s ", getpid(), time_buffer,
                            level_str);
     num_written = hhmin((size_t)n, sz);
 
