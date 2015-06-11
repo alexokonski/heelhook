@@ -15,8 +15,8 @@ test_pqueue.o: test/test_pqueue.c test/../pqueue.h test/../util.h \
  test/../util.h test/../hhmemory.h
 test_client.o: test/test_client.c test/../client.h test/../config.h \
  test/../endpoint.h test/../protocol.h test/../darray.h test/../util.h \
- test/../event.h test/../error_code.h test/../util.h test/../hhassert.h \
- test/../hhmemory.h test/../hhlog.h
+ test/../darray.h test/../event.h test/../error_code.h test/../util.h \
+ test/../hhassert.h test/../hhmemory.h test/../hhlog.h
 darray.o: darray.c darray.h hhassert.h hhmemory.h util.h
 event_poll.o: event_poll.c
 chatserver.o: servers/chatserver.c servers/../hhassert.h \

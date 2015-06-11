@@ -132,6 +132,20 @@ static void signal_handler(int sig)
     }
 }
 
+#ifdef HH_WITH_LIBEVENT
+static struct event_base* g_base = NULL;
+
+static bool attach_libevent(server* serv, iloop* loop,
+                            config_server_options* options, void* userdata)
+{
+    hhunused(serv);
+    hhunused(userdata);
+
+    g_base = event_base_new();
+    return iloop_attach_libevent(loop, g_base, options);
+}
+#endif
+
 static hhlog_options g_log_options =
 {
     .loglevel = HHLOG_LEVEL_DEBUG,
@@ -163,10 +177,11 @@ int main(int argc, char** argv)
     config_server_options options =
     {
         .bindaddr = NULL,
-        .max_clients = 1000,
+        .max_clients = 2001,
         .heartbeat_interval_ms = 0,
         .heartbeat_ttl_ms = 0,
         .handshake_timeout_ms = 0,
+        .enable_workers = false,
 
         .endp_settings =
         {
@@ -195,32 +210,50 @@ int main(int argc, char** argv)
 
     hhlog_set_options(&g_log_options);
 
-    g_serv = server_create_detached(&options, &callbacks, NULL);
-
     char* eventloop = NULL;
     if (argc > 2) eventloop = argv[2];
 
     if (eventloop == NULL)
     {
         hhlog(HHLOG_LEVEL_DEBUG, "Starting with built-in event loop");
+
+        g_serv = server_create(&options, &callbacks, NULL);
+
         /* use default event loop */
         server_listen(g_serv);
         server_destroy(g_serv);
+
         goto done;
     }
     else if (strcmp(eventloop, "libevent") == 0)
     {
 #ifdef HH_WITH_LIBEVENT
-        struct event_base* base = event_base_new();
 
         hhlog(HHLOG_LEVEL_DEBUG, "Starting with libevent");
-        /* use libevent as event loop */
-        iloop_attach_libevent(server_get_iloop(g_serv), base, &options);
-        server_init(g_serv);
 
-        event_base_dispatch(base);
-        server_destroy(g_serv);
-        event_base_free(base);
+        /* use libevent as event loop */
+        callbacks.attach_loop = attach_libevent;
+
+        g_serv = server_create_detached(&options, &callbacks, NULL);
+
+        server_init_result r;
+        r = server_init(g_serv);
+        switch (r)
+        {
+        case SERVER_INIT_WORKER:
+            /* block waiting for events */
+            event_base_dispatch(g_base);
+            server_destroy(g_serv);
+
+            event_base_free(g_base);
+            break;
+        case SERVER_INIT_PARENT:
+            pause();
+            break;
+        case SERVER_INIT_FAIL:
+            break;
+        }
+
 #else
         fprintf(stderr, "you must build this file with HH_WITH_LIBEVENT\n");
 #endif

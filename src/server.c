@@ -61,6 +61,8 @@
 #define SERVER_HEARTBEAT_PENDING            0
 #define SERVER_HEARTEAT_RECEIVED            ULLONG_MAX
 
+#define COMMAND_SHUT_DOWN   ((char)1)
+
 static char g_heartbeat_msg[] = "heartbeat";
 
 struct server_conn
@@ -80,6 +82,7 @@ struct server
 {
     bool stopping;
     int fd;
+    int num_connected;
     server_conn* connections;
     server_conn* active_head;
     server_conn* active_tail;
@@ -93,9 +96,11 @@ struct server
     config_server_options options;
     server_callbacks cbs;
     void* userdata;
+    int* pipes;
 };
 
 static void accept_callback(iloop* loop, int fd, void* data);
+static void worker_pipe_callback(iloop* loop, int fd, void* data);
 static void read_from_client_callback(iloop* loop, int fd, void* data);
 static void write_to_client_callback(iloop* loop, int fd, void* data);
 
@@ -103,7 +108,8 @@ static iloop_io_callback* g_io_cbs[ILOOP_NUMBER_OF_IO_CB] =
 {
     accept_callback, /* ILOOP_ACCEPT_CB */
     read_from_client_callback, /* ILOOP_READ_CB */
-    write_to_client_callback /* ILOOP_WRITE_CB */
+    write_to_client_callback, /* ILOOP_WRITE_CB */
+    worker_pipe_callback /* ILOOP_WORKER_CB */
 };
 
 static void stop_watchdog(iloop* loop,iloop_time_cb_type type,void* data);
@@ -119,11 +125,15 @@ static iloop_time_callback* g_time_cbs[ILOOP_NUMBER_OF_TIME_CB] =
     timeout_handshakes /* ILOOP_HANDSHAKE_TIMEOUT_CB */
 };
 
+/*
+ * Required when including iloop.h
+ */
 iloop* iloop_from_io(iloop_cb_type type, void *data)
 {
     switch (type)
     {
     case ILOOP_ACCEPT_CB:
+    case ILOOP_WORKER_CB:
         return &(((server*)data)->loop);
 
     case ILOOP_READ_CB:
@@ -212,6 +222,7 @@ static server_conn* activate_conn(server* serv, int client_fd)
 
     conn->fd = client_fd;
     endpoint_reset(&conn->endp);
+    serv->num_connected++;
 
     return conn;
 }
@@ -220,6 +231,8 @@ static void deactivate_conn(server* serv, server_conn* conn)
 {
     /* take this client out of the active list */
     INLIST_REMOVE(serv, conn, next, prev, active_head, active_tail);
+
+    serv->num_connected--;
 
     /* put it on the end of the free list */
     INLIST_APPEND(serv, conn, next, prev, free_head, free_tail);
@@ -526,15 +539,19 @@ static void read_from_client_callback(iloop* loop, int fd, void* data)
 
 static void accept_callback(iloop* loop, int fd, void* data)
 {
+    server* serv = data;
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
     int client_fd = accept(fd, (struct sockaddr*)(&addr), &len);
-    server* serv = data;
 
     if (client_fd == -1)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "-1 fd when accepting socket, fd: %d",
-                  fd);
+        if (errno != EAGAIN && errno != EWOULDBLOCK)
+        {
+            hhlog(HHLOG_LEVEL_ERROR,
+                  "-1 fd when accepting socket, fd: %d, err: %d (%s)", fd,
+                  errno, strerror(errno));
+        }
         return;
     }
 
@@ -559,6 +576,62 @@ static void accept_callback(iloop* loop, int fd, void* data)
     }
 }
 
+/*
+ * Only used in worker process mode
+ */
+static void worker_pipe_callback(iloop* loop, int fd, void* data)
+{
+    hhunused(loop);
+
+    server* serv = data;
+
+    char cmd = 0;
+    ssize_t num = read(fd, &cmd, sizeof(cmd));
+
+    if (num <= 0)
+    {
+        /* error or eof from pipe, close and don't listen anymore */
+        close(fd);
+        loop->delete_io(loop, fd, ILOOP_READABLE | ILOOP_WRITEABLE);
+
+        if (num < 0)
+        {
+            hhlog(HHLOG_LEVEL_ERROR,
+                  "invalid worker_pipe_callback read, stopping worker process"
+                  " err: %d (%s)", errno, strerror(errno));
+            server_stop(serv);
+            return;
+        }
+        else if (num == 0)
+        {
+            if (serv->stopping)
+            {
+                hhlog(HHLOG_LEVEL_DEBUG,
+                   "pipe died but server is stopping, silently closed pipe");
+            }
+            else
+            {
+                hhlog(HHLOG_LEVEL_ERROR,
+                        "master process pipe eof, stopping worker process");
+                server_stop(serv);
+            }
+            return;
+        }
+    }
+
+    switch (cmd)
+    {
+    case COMMAND_SHUT_DOWN:
+            hhlog(HHLOG_LEVEL_DEBUG,
+                  "worker received shut down command, shutting down");
+        server_stop(serv);
+        break;
+    default:
+        hhlog(HHLOG_LEVEL_ERROR, "invalid cmd: %c", cmd);
+        break;
+    }
+}
+
 server* server_create(config_server_options* options,
                       server_callbacks* callbacks, void* userdata)
 {
@@ -577,12 +650,19 @@ server* server_create(config_server_options* options,
 server* server_create_detached(config_server_options* options,
                                server_callbacks* callbacks, void* userdata)
 {
+    if (options->enable_workers && options->num_workers < 1)
+    {
+        hhlog(HHLOG_LEVEL_ERROR, "Invalid number of workers: %d",
+              options->num_workers);
+    }
+
     int i = 0;
     server* serv = hhmalloc(sizeof(*serv));
     if (serv == NULL) return NULL;
 
     serv->stopping = false;
     serv->fd = -1;
+    serv->num_connected = 0;
     serv->active_head = NULL;
     serv->active_tail = NULL;
     serv->free_head = NULL;
@@ -594,6 +674,8 @@ server* server_create_detached(config_server_options* options,
     serv->cbs = *callbacks;
     serv->options = *options;
     serv->userdata = userdata;
+    serv->pipes = NULL;
+
     int max_clients = options->max_clients;
     hhassert(max_clients >= 0);
     serv->connections = hhmalloc((size_t)max_clients * sizeof(server_conn));
@@ -631,13 +713,8 @@ err_create:
         }
         hhfree(serv->connections);
     }
-    if (serv->loop.userdata != NULL && serv->loop.cleanup != NULL)
-    {
-        serv->loop.cleanup(&serv->loop);
-    }
     hhfree(serv);
     return NULL;
-
 }
 
 void server_destroy(server* serv)
@@ -646,14 +723,50 @@ void server_destroy(server* serv)
     {
         serv->loop.cleanup(&serv->loop);
     }
-    int max_clients = serv->options.max_clients;
-    for (int i = 0; i < max_clients; i++)
+
+    if (serv->connections != NULL)
     {
-        deinit_conn(&serv->connections[i]);
+        int max_clients = serv->options.max_clients;
+        for (int i = 0; i < max_clients; i++)
+        {
+            deinit_conn(&serv->connections[i]);
+        }
+    }
+
+    if(serv->pipes != NULL)
+    {
+        hhfree(serv->pipes);
     }
 
     hhfree(serv->connections);
     hhfree(serv);
+}
+
+/*
+ * Returns true if this is the master process, false if this is a worker
+ * process. It multi-process is not enabled, will return false
+ */
+server_process_type server_get_process_type(server* serv)
+{
+    config_server_options* opt = &serv->options;
+
+    if (!opt->enable_workers)
+    {
+        return SERVER_PROCESS_SINGLETON;
+    }
+    else if (serv->pipes != NULL)
+    {
+        return SERVER_PROCESS_MASTER;
+    }
+    else
+    {
+        return SERVER_PROCESS_WORKER;
+    }
+}
+
+bool server_is_master(server* serv)
+{
+    return (server_get_process_type(serv) == SERVER_PROCESS_MASTER);
 }
 
 /* set per-connection userdata */
@@ -703,10 +816,32 @@ static void server_teardown(server* serv)
     }
 }
 
+static void kill_workers(server* serv)
+{
+    config_server_options* opt = &serv->options;
+    for (int i = 0; i < opt->num_workers; i++)
+    {
+        char cmd = COMMAND_SHUT_DOWN;
+        ssize_t num = write(serv->pipes[i], &cmd, sizeof(cmd));
+        if (num < 0)
+        {
+            hhlog(HHLOG_LEVEL_ERROR,
+                  "error sending cmd to worker: %d (%s)", errno,
+                  strerror(errno));
+        }
+    }
+}
+
 /* check if we've been asked to stop, and stop */
 static void stop_watchdog(iloop* loop, iloop_time_cb_type type, void* data)
 {
     server* serv = data;
+
+    if (hhlog_get_level() == HHLOG_LEVEL_DEBUG_4 && !server_is_master(serv))
+    {
+        hhlog(HHLOG_LEVEL_DEBUG_4, "current_connected: %d",
+                serv->num_connected);
+    }
 
     if (serv->cbs.should_stop != NULL &&
         serv->cbs.should_stop(serv, serv->userdata))
@@ -717,6 +852,12 @@ static void stop_watchdog(iloop* loop, iloop_time_cb_type type, void* data)
     if (serv->stopping)
     {
         hhlog(HHLOG_LEVEL_INFO, "received stop, sending close to all clients");
+
+        server_process_type ptype = server_get_process_type(serv);
+        if (ptype == SERVER_PROCESS_MASTER)
+        {
+            kill_workers(serv);
+        }
 
         /* we aren't needed any more */
         loop->delete_time(loop, type);
@@ -812,6 +953,71 @@ static server_result endpoint_result_to_server_result(endpoint_result r)
 
     hhassert(0);
     return SERVER_RESULT_FAIL;
+}
+
+static int fork_workers(server* serv)
+{
+    config_server_options* opt = &serv->options;
+
+    int fd = serv->fd;
+    serv->pipes = hhcalloc(opt->num_workers, sizeof(int));
+
+    for (int i = 0; i < opt->num_workers; i++)
+    {
+        int p[2];
+        if (pipe(p) == -1)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "failed to create pipe: %s",
+                    strerror(errno));
+            hhfree(serv->pipes);
+            serv->pipes = NULL;
+            return -1;
+        }
+
+        if (fcntl(p[0], F_SETFL, O_NONBLOCK) == -1 ||
+            fcntl(p[1], F_SETFL, O_NONBLOCK) == -1)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "fcntl failed on read pipe: %s",
+                  strerror(errno));
+            close(p[0]);
+            close(p[1]);
+            hhfree(serv->pipes);
+            serv->pipes = NULL;
+            return -1;
+        }
+
+        pid_t pid = fork();
+
+        switch (pid)
+        {
+        case -1:
+            hhlog(HHLOG_LEVEL_ERROR, "fork failed: %s", strerror(errno));
+            return -1;
+        case 0:
+            hhlog(HHLOG_LEVEL_DEBUG, "forked child %d, parent: %d",
+                    getpid(), getppid());
+            hhfree(serv->pipes);
+            serv->pipes = NULL;
+
+            /* close write end */
+            close(p[1]);
+            /*
+             * we're going to get notified about new client sockets
+             * from the read end
+             */
+            fd = p[0];
+            goto child_done;
+        default:
+            /* close the read end */
+            close(p[0]);
+            /* we're going to write new client sockets to the write end */
+            serv->pipes[i] = p[1];
+            break;
+        }
+    }
+
+child_done:
+    return fd;
 }
 
 /* queue up a message to send on this connection */
@@ -980,21 +1186,21 @@ void server_stop(server* serv)
 server_result server_init(server* serv)
 {
     config_server_options* opt = &serv->options;
+    int pipefd = -1;
 
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1)
     {
         hhlog(HHLOG_LEVEL_ERROR, "failed to create socket: %s",
                   strerror(errno));
-        return SERVER_RESULT_FAIL;
+        goto fail;
     }
 
     if (fcntl(s, F_SETFL, O_NONBLOCK) == -1)
     {
         hhlog(HHLOG_LEVEL_ERROR, "fcntl failed on socket: %s",
               strerror(errno));
-        close(s);
-        return SERVER_RESULT_FAIL;
+        goto fail;
     }
 
     struct sockaddr_in addr;
@@ -1007,7 +1213,7 @@ server_result server_init(server* serv)
     {
         hhlog(HHLOG_LEVEL_ERROR, "invalid bind address: %s",
                   opt->bindaddr);
-        close(s);
+        goto fail;
         return SERVER_RESULT_FAIL;
     }
 
@@ -1015,7 +1221,7 @@ server_result server_init(server* serv)
     {
         hhlog(HHLOG_LEVEL_ERROR, "failed to bind socket: %s",
                   strerror(errno));
-        close(s);
+        goto fail;
         return SERVER_RESULT_FAIL;
     }
 
@@ -1023,24 +1229,51 @@ server_result server_init(server* serv)
     {
         hhlog(HHLOG_LEVEL_ERROR, "failed to listen on socket: %s",
                   strerror(errno));
-        close(s);
+        goto fail;
         return SERVER_RESULT_FAIL;
     }
 
     /* socket was set up successfully */
     serv->fd = s;
-
     iloop* loop = &serv->loop;
 
-    iloop_result r;
-    r = loop->add_io(loop, s, ILOOP_READABLE, ILOOP_ACCEPT_CB, serv);
-
-    if (r != ILOOP_SUCCESS)
+    if (opt->enable_workers && opt->num_workers >= 1)
     {
-        hhlog(HHLOG_LEVEL_ERROR, "error adding accept callback to event"
-                  "loop: %d", r);
-        close(s);
-        return SERVER_RESULT_FAIL;
+        if ((pipefd = fork_workers(serv)) == -1)
+        {
+            goto fail;
+        }
+    }
+
+    /* Now that we've forked, we can start the event loop */
+
+    /* call attach callback, or attach default event loop if no cb specified */
+    if (serv->cbs.attach_loop != NULL &&
+        !serv->cbs.attach_loop(serv, &serv->loop, &serv->options,
+                               serv->userdata))
+    {
+        goto fail;
+    }
+    else
+    {
+        if (!iloop_event_attach_internal(&serv->loop, &serv->options))
+        {
+            goto fail;
+        }
+    }
+
+    iloop_result r;
+    server_process_type type = server_get_process_type(serv);
+    if (type == SERVER_PROCESS_WORKER || type == SERVER_PROCESS_SINGLETON)
+    {
+        r = loop->add_io(loop, serv->fd, ILOOP_READABLE, ILOOP_ACCEPT_CB, serv);
+
+        if (r != ILOOP_SUCCESS)
+        {
+            hhlog(HHLOG_LEVEL_ERROR, "error adding accept callback to event"
+                      "loop: %d (err: %s)", r, strerror(errno));
+            goto fail;
+        }
     }
 
     /*
@@ -1049,30 +1282,69 @@ server_result server_init(server* serv)
      */
     loop->add_time(loop, ILOOP_WATCHDOG_CB, SERVER_WATCHDOG_FREQ_MS, 0, serv);
 
-    uint64_t hb_interval = serv->options.heartbeat_interval_ms;
-    uint64_t hb_ttl = serv->options.heartbeat_ttl_ms;
-    uint64_t handshake_timeout = serv->options.handshake_timeout_ms;
-    if (hb_interval > 0)
+    switch (type)
     {
-        /* send a ping every hb_interval */
-        loop->add_time(loop, ILOOP_HEARTBEAT_CB, hb_interval, 0,
-                       serv);
+    case SERVER_PROCESS_MASTER:
+        /* we are the master process, we don't need connections */
+        hhfree(serv->connections);
+        serv->connections = NULL;
+        break;
+    case SERVER_PROCESS_WORKER:
+        hhassert(pipefd != -1);
 
-        if (hb_ttl > 0)
+        /*
+         * the master has opened a pipe to communicate with us, we need to
+         * listen for activity on it
+         */
+        r = loop->add_io(loop, pipefd, ILOOP_READABLE, ILOOP_WORKER_CB,
+                         serv);
+
+        if (r != ILOOP_SUCCESS)
         {
-            /* check for responses every hb_interval, hb_ttl seconds after */
-            loop->add_time(loop, ILOOP_HEARTBEAT_EXPIRE_CB, hb_interval,
-                           hb_ttl, serv);
+            hhlog(HHLOG_LEVEL_ERROR, "error adding worker callback to event"
+                      "loop: %d (err: %s)", r, strerror(errno));
+            goto fail;
         }
-    }
-
-    if (handshake_timeout > 0)
+        /*
+         * fallthru
+         */
+    case SERVER_PROCESS_SINGLETON:
     {
-        loop->add_time(loop, ILOOP_HANDSHAKE_TIMEOUT_CB,
-                       SERVER_HANDSHAKE_TIMEOUT_FREQ_MS, 0, serv);
+        uint64_t hb_interval = serv->options.heartbeat_interval_ms;
+        uint64_t hb_ttl = serv->options.heartbeat_ttl_ms;
+        uint64_t handshake_timeout = serv->options.handshake_timeout_ms;
+        if (hb_interval > 0)
+        {
+            /* send a ping every hb_interval */
+            loop->add_time(loop, ILOOP_HEARTBEAT_CB, hb_interval, 0,
+                           serv);
+
+            if (hb_ttl > 0)
+            {
+                /*
+                 * check for responses every hb_interval, hb_ttl seconds
+                 * after
+                 */
+                loop->add_time(loop, ILOOP_HEARTBEAT_EXPIRE_CB, hb_interval,
+                               hb_ttl, serv);
+            }
+        }
+
+        if (handshake_timeout > 0)
+        {
+            loop->add_time(loop, ILOOP_HANDSHAKE_TIMEOUT_CB,
+                           SERVER_HANDSHAKE_TIMEOUT_FREQ_MS, 0, serv);
+        }
+        break;
+    }
     }
 
     return SERVER_RESULT_SUCCESS;
+
+fail:
+    if (s != -1) close(s);
+    if (pipefd != -1) close(pipefd);
+    return SERVER_RESULT_FAIL;
 }
 
 /*
@@ -1088,16 +1360,6 @@ iloop* server_get_iloop(server* serv)
  */
 server_result server_listen(server* serv)
 {
-    /* if no loop has been attached, attach default loop */
-    if (serv->loop.userdata == NULL)
-    {
-        if (!iloop_event_attach_internal(&serv->loop, &serv->options))
-        {
-            server_destroy(serv);
-            return SERVER_RESULT_FAIL;
-        }
-    }
-
     /* start the server, if it hasn't been already */
     if (serv->fd == -1)
     {
@@ -1108,7 +1370,7 @@ server_result server_listen(server* serv)
         }
     }
 
-    hhassert(serv->loop.listen != NULL );
+    hhassert(serv->loop.listen != NULL);
 
     /* block and process all connections */
     serv->loop.listen(&serv->loop);

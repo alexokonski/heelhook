@@ -61,6 +61,11 @@ void hhlog_set_options(hhlog_options* options)
     }
 }
 
+hhlog_level hhlog_get_level(void)
+{
+    return g_current_options->loglevel;
+}
+
 /*
  * logs the message format with options used with hhlog_set_options 
  * will default to INFO, no syslog, stdout if you never call hhlog_set_options

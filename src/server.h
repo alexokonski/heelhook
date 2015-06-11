@@ -89,6 +89,13 @@ typedef void (server_on_close)(server_conn* conn_info, int code,
  */
 typedef bool (server_should_stop)(server* serv, void* userdata);
 
+/*
+ * will be called when the iloop for this server should be filled in
+ */
+typedef bool (server_attach_iloop)(server* serv, iloop* loop,
+                                   config_server_options* options,
+                                   void* userdata);
+
 typedef enum
 {
     SERVER_RESULT_SUCCESS,
@@ -104,7 +111,17 @@ typedef struct
     server_on_pong* on_pong;
     server_on_close* on_close;
     server_should_stop* should_stop;
+
+    /* NULL will cause default loop to be attached */
+    server_attach_iloop* attach_loop;
 } server_callbacks;
+
+typedef enum
+{
+    SERVER_PROCESS_SINGLETON,
+    SERVER_PROCESS_MASTER,
+    SERVER_PROCESS_WORKER
+} server_process_type;
 
 /*
  * create an instance of a 'server'. options and callbacks must be valid
@@ -126,6 +143,18 @@ server* server_create_detached(config_server_options* options,
  * destroy an instance of a server
  */
 void server_destroy(server* serv);
+
+/*
+ * Returns true if this is the master process, false if this is a worker
+ * process. It multi-process is not enabled, will return false. It's only
+ * valid to call this after server_init or server_listen has been called.
+ */
+server_process_type server_get_process_type(server* serv);
+
+/*
+ * convenience function, returns true if the server is the master
+ */
+bool server_is_master(server* serv);
 
 /* set per-connection userdata */
 void server_conn_set_userdata(server_conn* conn, void* userdata);
@@ -202,12 +231,7 @@ void server_stop(server* serv);
  * this directly if you are going to use your own event loop instead of
  * calling server_listen
  */
-server_result server_init(server* serv);
-
-/*
- * Get internal iloop to attach this server to another event loop
- */
-iloop* server_get_iloop(server* serv);
+ server_result server_init(server* serv);
 
 /*
  * Calls server_init, then blocks indefinitely listening for connections from

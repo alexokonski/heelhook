@@ -69,11 +69,18 @@ static void iloop_write_cb(event_loop* loop, int fd, void* data)
     iloop_call_io_cb(ILOOP_WRITE_CB, fd, data);
 }
 
+static void iloop_worker_cb(event_loop* loop, int fd, void* data)
+{
+    hhunused(loop);
+    iloop_call_io_cb(ILOOP_WORKER_CB, fd, data);
+}
+
 static event_io_callback* const g_iloop_event_io_cbs[ILOOP_NUMBER_OF_IO_CB] =
 {
     iloop_accept_cb, /* ILOOP_ACCEPT_CB */
     iloop_read_cb, /* ILOOP_READ_CB */
-    iloop_write_cb /* ILOOP_WRITE_CB */
+    iloop_write_cb, /* ILOOP_WRITE_CB */
+    iloop_worker_cb /* ILOOP_WORKER_CB */
 };
 
 static

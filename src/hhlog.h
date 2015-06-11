@@ -61,6 +61,9 @@ typedef struct
 /* stores a pointer to options */
 void hhlog_set_options(hhlog_options* options);
 
+/* get current log level */
+hhlog_level hhlog_get_level(void);
+
 /* 
  * DO NOT CALL THIS DIRECTLY, USE hhlog MACRO
  *

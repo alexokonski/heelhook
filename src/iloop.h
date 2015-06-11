@@ -50,6 +50,7 @@ typedef enum
     ILOOP_ACCEPT_CB,
     ILOOP_READ_CB,
     ILOOP_WRITE_CB,
+    ILOOP_WORKER_CB,
     ILOOP_NUMBER_OF_IO_CB
 } iloop_cb_type;
 

@@ -42,6 +42,15 @@ typedef struct
     /* port the server will listen on */
     uint16_t port;
 
+    /* should the server library prefork worker processes */
+    bool enable_workers;
+
+    /*
+     * how many worker processes to fork. Only relavent if enable_workers is
+     * set
+     */
+    int num_workers;
+
     /* max clients we allow connected */
     int max_clients;
 
