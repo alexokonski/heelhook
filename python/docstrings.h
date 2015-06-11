@@ -1,6 +1,10 @@
+PyDoc_STRVAR(heelhook_set_opts__doc__,
+"set_opts(log_to_stdout=False,loglevel=LogLevel.INFO)\n"
+);
+
 PyDoc_STRVAR(Server__doc__,
 "Server(bindaddr=\"0.0.0.0\",port=9001,connection_class=heelhook.ServerConn,\n"
-"       max_clients=1024,loglevel=LogLevel.INFO,heartbeat_interval_ms=0,\n"
+"       max_clients=1024,heartbeat_interval_ms=0,\n"
 "       heartbeat_ttl_ms=0,handshake_timeout_ms=0,init_buffer_len=4096,\n"
 "       write_max_frame_size=-1,read_max_msg_size=1*1024*1024,\n"
 "       read_max_num_frames=-1,max_handshake_size=-1)\n\n"
@@ -12,7 +16,6 @@ PyDoc_STRVAR(Server__doc__,
 "    events, and sending messages\n"
 "    max_clients - maximum number of clients the server will allow to be\n"
 "                  concurrently connected\n"
-"    loglevel - Sets the loglevel for heelhook\n"
 "    heartbeat_interval_ms - how often to send heartbeat pings. 0 for never\n"
 "    heartbeat_ttl_ms - how long to wait for a reply to a heartbeat ping. If\n"
 "                       set to 0, heartbeats will be pongs instead of pings and\n"

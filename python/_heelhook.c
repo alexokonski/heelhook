@@ -49,7 +49,7 @@ static hhlog_options g_log_options =
     .loglevel = HHLOG_LEVEL_INFO,
     .syslogident = NULL,
     .logfilepath = NULL,
-    .log_to_stdout = true,
+    .log_to_stdout = false,
     .log_location = true
 };
 
@@ -71,6 +71,15 @@ typedef struct
 
 static void install_sighandler(hh_ServerObj* obj);
 static void uninstall_sighandler(hh_ServerObj* obj);
+
+static PyObject* heelhook_set_opts(PyObject* self, PyObject* args,
+                         PyObject* kwds);
+static PyMethodDef hh_ModuleMethods[] =
+{
+    { "set_opts", (PyCFunction)heelhook_set_opts, METH_VARARGS | METH_KEYWORDS,
+        heelhook_set_opts__doc__ },
+    { NULL } /* Sentinel */
+};
 
 static void Server_dealloc(hh_ServerObj* self);
 static int Server_init(hh_ServerObj* self, PyObject* args,
@@ -265,6 +274,31 @@ PyTypeObject hh_ServerConnType = {
     ServerConn_new,                   /*tp_new */
 };
 
+static PyObject* heelhook_set_opts(PyObject* self, PyObject* args,
+                         PyObject* kwds)
+{
+    static char* kwlist[] =
+    {
+        "log_to_stdout",
+        "loglevel",
+        NULL
+    };
+
+    int loglevel = HHLOG_LEVEL_INFO;
+    int log_to_stdout = 0;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|ii", kwlist,
+                &log_to_stdout, &loglevel))
+    {
+        return NULL;
+    }
+
+    g_log_options.log_to_stdout = log_to_stdout;
+    g_log_options.loglevel = loglevel;
+
+    Py_RETURN_NONE;
+}
+
 static void Server_dealloc(hh_ServerObj* self)
 {
     if (self->serv != NULL)
@@ -294,7 +328,7 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
 
     static char* kwlist[] =
     {
-        "bindaddr", "port", "connection_class", "max_clients", "loglevel",
+        "bindaddr", "port", "connection_class", "max_clients",
         "heartbeat_interval_ms", "heartbeat_ttl_ms", "handshake_timeout_ms",
         "init_buffer_len", "write_max_frame_size", "read_max_msg_size",
         "read_max_num_frames", "max_handshake_size",
@@ -305,7 +339,6 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
     int port = 9001;
     PyObject* connection_class = (PyObject*)(&hh_ServerConnType);
     int max_clients = 1024;
-    int loglevel = HHLOG_LEVEL_INFO;
     int heartbeat_interval_ms = 0;
     int heartbeat_ttl_ms = 0;
     int handshake_timeout_ms = 0;
@@ -316,15 +349,13 @@ static int Server_init(hh_ServerObj* self, PyObject* args,
     int max_handshake_size = -1;
 
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|siOiiiiiiiiii", kwlist,
-            &bindaddr, &port, &connection_class, &max_clients, &loglevel,
+            &bindaddr, &port, &connection_class, &max_clients,
             &heartbeat_interval_ms, &heartbeat_ttl_ms, &handshake_timeout_ms,
             &init_buffer_len, &write_max_frame_size, &read_max_msg_size,
             &read_max_num_frames, &max_handshake_size))
     {
         return -1;
     }
-
-    g_log_options.loglevel = loglevel;
 
     PyObject* tmp = self->conn_class;
     Py_INCREF(connection_class);
@@ -777,7 +808,7 @@ on_connect(server_conn* conn, int* subprotocol_out, int* extensions_out,
         goto fail;
     }
 
-    hhlog(HHLOG_LEVEL_DEBUG, "SETTING CONN");
+    hhlog(HHLOG_LEVEL_DEBUG, "setting conn");
     server_conn_set_userdata(conn, conn_obj);
     ((hh_ServerConnObj*)conn_obj)->conn = conn;
 
@@ -1104,7 +1135,7 @@ PyMODINIT_FUNC init_heelhook(void)
         return;
     }
 
-    module = Py_InitModule3(MOD_HEELHOOK, NULL, "");
+    module = Py_InitModule3(MOD_HEELHOOK, hh_ModuleMethods, "");
     if (module == NULL)
     {
         return;

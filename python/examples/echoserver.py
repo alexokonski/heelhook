@@ -1,5 +1,8 @@
 import sys
-from heelhook import Server, ServerConn
+import heelhook
+from heelhook import Server, ServerConn, LogLevel
+
+heelhook.set_opts(log_to_stdout=True,loglevel=LogLevel.DEBUG_4)
 
 class EchoConnection(ServerConn):
     def on_connect(self):
@@ -11,7 +14,7 @@ class EchoConnection(ServerConn):
         print self.num, "All headers:", self.get_headers()
 
     def on_message(self, msg, is_text):
-        print self.num, "Got message:", msg
+        #print self.num, "Got message:", msg
         self.send(msg, is_text)
 
     def on_close(self, code, reason):
